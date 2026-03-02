@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"agent-issue-tracker/internal/ait"
+	_ "modernc.org/sqlite"
 )
 
 func TestStatusInitializesEmptyDatabase(t *testing.T) {
@@ -35,6 +39,9 @@ func TestCreateAndShowIssue(t *testing.T) {
 		var created ait.Issue
 		runJSONCommand(t, a, []string{"create", "--title", "Bootstrap CLI", "--description", "Implement first version"}, &created)
 
+		if !strings.HasPrefix(created.ID, "ait-") {
+			t.Fatalf("expected public issue id, got %s", created.ID)
+		}
 		if created.Title != "Bootstrap CLI" {
 			t.Fatalf("unexpected title: %s", created.Title)
 		}
@@ -55,6 +62,95 @@ func TestCreateAndShowIssue(t *testing.T) {
 			t.Fatalf("expected no notes, got %d", len(shown.Notes))
 		}
 	})
+}
+
+func TestOpenMigratesLegacyIDsToPublicKeys(t *testing.T) {
+	tmpDir := t.TempDir()
+	restoreCWD := withWorkingDir(t, tmpDir)
+	defer restoreCWD()
+
+	dbPath := mustDatabasePath(t)
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open legacy db failed: %v", err)
+	}
+
+	legacyStatements := []string{
+		`CREATE TABLE issues (
+			id TEXT PRIMARY KEY,
+			type TEXT NOT NULL CHECK (type IN ('task', 'epic')),
+			title TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'closed', 'cancelled')),
+			parent_id TEXT NULL,
+			priority TEXT NOT NULL DEFAULT 'P2' CHECK (priority IN ('P0', 'P1', 'P2', 'P3', 'P4')),
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			closed_at TEXT NULL,
+			FOREIGN KEY (parent_id) REFERENCES issues(id)
+		);`,
+		`CREATE TABLE issue_dependencies (
+			blocked_id TEXT NOT NULL,
+			blocker_id TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			PRIMARY KEY (blocked_id, blocker_id),
+			FOREIGN KEY (blocked_id) REFERENCES issues(id) ON DELETE CASCADE,
+			FOREIGN KEY (blocker_id) REFERENCES issues(id) ON DELETE CASCADE
+		);`,
+		`CREATE TABLE issue_notes (
+			id TEXT PRIMARY KEY,
+			issue_id TEXT NOT NULL,
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+		);`,
+		`INSERT INTO issues (id, type, title, description, status, parent_id, priority, created_at, updated_at, closed_at)
+		 VALUES ('legacy-epic', 'epic', 'Legacy Epic', 'Old schema parent', 'open', NULL, 'P1', '2026-03-01T10:00:00Z', '2026-03-01T10:00:00Z', NULL);`,
+		`INSERT INTO issues (id, type, title, description, status, parent_id, priority, created_at, updated_at, closed_at)
+		 VALUES ('legacy-task', 'task', 'Legacy Task', 'Old schema child', 'open', 'legacy-epic', 'P2', '2026-03-01T10:05:00Z', '2026-03-01T10:05:00Z', NULL);`,
+		`INSERT INTO issue_notes (id, issue_id, body, created_at)
+		 VALUES ('note-1', 'legacy-task', 'Migrated note', '2026-03-01T10:06:00Z');`,
+	}
+
+	for _, stmt := range legacyStatements {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("seed legacy schema failed: %v", err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close legacy db failed: %v", err)
+	}
+
+	app, err := ait.Open(context.Background())
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer app.Close()
+
+	var shown ait.ShowResponse
+	runJSONCommand(t, app, []string{"show", "legacy-task"}, &shown)
+
+	if !strings.HasPrefix(shown.Issue.ID, "ait-") {
+		t.Fatalf("expected migrated public issue id, got %s", shown.Issue.ID)
+	}
+	if shown.Issue.ParentID == nil || !strings.HasPrefix(*shown.Issue.ParentID, "ait-") {
+		t.Fatalf("expected migrated parent public id, got %+v", shown.Issue.ParentID)
+	}
+	if len(shown.Notes) != 1 || shown.Notes[0].Body != "Migrated note" {
+		t.Fatalf("expected migrated note, got %+v", shown.Notes)
+	}
+
+	var listed struct {
+		Issues []ait.Issue `json:"issues"`
+	}
+	runJSONCommand(t, app, []string{"list"}, &listed)
+	if len(listed.Issues) != 2 {
+		t.Fatalf("expected 2 migrated issues, got %d", len(listed.Issues))
+	}
 }
 
 func TestReadyExcludesBlockedIssues(t *testing.T) {

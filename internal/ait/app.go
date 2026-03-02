@@ -78,29 +78,35 @@ func (a *App) runCreate(ctx context.Context, args []string) error {
 	}
 
 	var parent *string
+	var parentInternalID any
 	if strings.TrimSpace(*parentID) != "" {
 		parent = parentID
 		if err := a.validateParent(ctx, *parent); err != nil {
 			return err
 		}
+		resolvedParentID, err := a.resolveIssueID(ctx, *parent)
+		if err != nil {
+			return err
+		}
+		parentInternalID = resolvedParentID
 	}
 
-	id, err := NewID()
+	tx, err := a.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 
 	now := NowUTC()
-	_, err = a.db.ExecContext(
+	result, err := tx.ExecContext(
 		ctx,
-		`INSERT INTO issues (id, type, title, description, status, parent_id, priority, created_at, updated_at, closed_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-		id,
+		`INSERT INTO issues (public_id, type, title, description, status, parent_id, priority, created_at, updated_at, closed_at)
+		 VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
 		*issueType,
 		strings.TrimSpace(*title),
 		strings.TrimSpace(*description),
 		StatusOpen,
-		parent,
+		parentInternalID,
 		*priority,
 		now,
 		now,
@@ -109,7 +115,25 @@ func (a *App) runCreate(ctx context.Context, args []string) error {
 		return err
 	}
 
-	created, err := a.fetchIssue(ctx, id)
+	internalID, err := result.LastInsertId()
+	if err != nil {
+		return err
+	}
+
+	publicID, err := PublicIDFromInternalID(internalID)
+	if err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx, `UPDATE issues SET public_id = ? WHERE id = ?`, publicID, internalID); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	created, err := a.fetchIssueByInternalID(ctx, internalID)
 	if err != nil {
 		return err
 	}
@@ -122,23 +146,28 @@ func (a *App) runShow(ctx context.Context, args []string) error {
 		return &CLIError{Code: "usage", Message: "usage: ait show <id>", ExitCode: 64}
 	}
 
-	iss, err := a.fetchIssue(ctx, args[0])
+	internalID, err := a.resolveIssueID(ctx, args[0])
 	if err != nil {
 		return err
 	}
-	children, err := a.fetchChildren(ctx, args[0])
+
+	iss, err := a.fetchIssueByInternalID(ctx, internalID)
 	if err != nil {
 		return err
 	}
-	blockers, err := a.fetchBlockers(ctx, args[0])
+	children, err := a.fetchChildren(ctx, internalID)
 	if err != nil {
 		return err
 	}
-	blocks, err := a.fetchBlocks(ctx, args[0])
+	blockers, err := a.fetchBlockers(ctx, internalID)
 	if err != nil {
 		return err
 	}
-	notes, err := a.fetchNotes(ctx, args[0])
+	blocks, err := a.fetchBlocks(ctx, internalID)
+	if err != nil {
+		return err
+	}
+	notes, err := a.fetchNotes(ctx, internalID)
 	if err != nil {
 		return err
 	}
@@ -180,34 +209,43 @@ func (a *App) runList(ctx context.Context, args []string) error {
 		}
 	}
 
-	query := `SELECT id, type, title, description, status, parent_id, priority, created_at, updated_at, closed_at FROM issues`
+	query := fmt.Sprintf(
+		`SELECT %s
+		 FROM issues i
+		 LEFT JOIN issues parent ON parent.id = i.parent_id`,
+		issueSelectColumns("i"),
+	)
 	var clauses []string
 	var params []any
 
 	if !*includeAll && *status == "" {
-		clauses = append(clauses, "status != ? AND status != ?")
+		clauses = append(clauses, "i.status != ? AND i.status != ?")
 		params = append(params, StatusClosed, StatusCancelled)
 	}
 	if *parentID != "" {
-		clauses = append(clauses, "parent_id = ?")
-		params = append(params, *parentID)
+		resolvedParentID, err := a.resolveIssueID(ctx, *parentID)
+		if err != nil {
+			return err
+		}
+		clauses = append(clauses, "i.parent_id = ?")
+		params = append(params, resolvedParentID)
 	}
 	if *status != "" {
-		clauses = append(clauses, "status = ?")
+		clauses = append(clauses, "i.status = ?")
 		params = append(params, *status)
 	}
 	if *issueType != "" {
-		clauses = append(clauses, "type = ?")
+		clauses = append(clauses, "i.type = ?")
 		params = append(params, *issueType)
 	}
 	if *priority != "" {
-		clauses = append(clauses, "priority = ?")
+		clauses = append(clauses, "i.priority = ?")
 		params = append(params, *priority)
 	}
 	if len(clauses) > 0 {
 		query += " WHERE " + strings.Join(clauses, " AND ")
 	}
-	query += " ORDER BY created_at ASC"
+	query += " ORDER BY i.created_at ASC"
 
 	items, err := a.queryIssues(ctx, query, params...)
 	if err != nil {
@@ -263,10 +301,14 @@ func (a *App) runSearch(ctx context.Context, args []string) error {
 
 	items, err := a.queryIssues(
 		ctx,
-		`SELECT id, type, title, description, status, parent_id, priority, created_at, updated_at, closed_at
-		 FROM issues
-		 WHERE title LIKE ? OR description LIKE ?
-		 ORDER BY created_at ASC`,
+		fmt.Sprintf(
+			`SELECT %s
+			 FROM issues i
+			 LEFT JOIN issues parent ON parent.id = i.parent_id
+			 WHERE i.title LIKE ? OR i.description LIKE ?
+			 ORDER BY i.created_at ASC`,
+			issueSelectColumns("i"),
+		),
 		needle,
 		needle,
 	)
@@ -282,6 +324,10 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 		return &CLIError{Code: "usage", Message: "usage: ait update <id> [flags]", ExitCode: 64}
 	}
 	id := args[0]
+	internalID, err := a.resolveIssueID(ctx, id)
+	if err != nil {
+		return err
+	}
 
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	title := fs.String("title", "", "")
@@ -295,7 +341,7 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 		return &CLIError{Code: "usage", Message: err.Error(), ExitCode: 64}
 	}
 
-	current, err := a.fetchIssue(ctx, id)
+	current, err := a.fetchIssueByInternalID(ctx, internalID)
 	if err != nil {
 		return err
 	}
@@ -344,7 +390,11 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 	}
 	if *parentID != "" {
 		sets = append(sets, "parent_id = ?")
-		params = append(params, *parentID)
+		parentInternalID, err := a.resolveIssueID(ctx, *parentID)
+		if err != nil {
+			return err
+		}
+		params = append(params, parentInternalID)
 	}
 	if *priority != "" {
 		sets = append(sets, "priority = ?")
@@ -355,7 +405,7 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 	}
 
 	sets = append(sets, "updated_at = ?")
-	params = append(params, NowUTC(), id)
+	params = append(params, NowUTC(), internalID)
 
 	query := "UPDATE issues SET " + strings.Join(sets, ", ") + " WHERE id = ?"
 	result, err := a.db.ExecContext(ctx, query, params...)
@@ -366,7 +416,7 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 		return &CLIError{Code: "not_found", Message: fmt.Sprintf("issue %s not found", id), ExitCode: 66}
 	}
 
-	updated, err := a.fetchIssue(ctx, id)
+	updated, err := a.fetchIssueByInternalID(ctx, internalID)
 	if err != nil {
 		return err
 	}
@@ -378,7 +428,11 @@ func (a *App) runStatusChange(ctx context.Context, args []string, nextStatus str
 	if len(args) != 1 {
 		return &CLIError{Code: "usage", Message: fmt.Sprintf("usage: ait %s <id>", CommandNameForStatus(nextStatus)), ExitCode: 64}
 	}
-	current, err := a.fetchIssue(ctx, args[0])
+	internalID, err := a.resolveIssueID(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	current, err := a.fetchIssueByInternalID(ctx, internalID)
 	if err != nil {
 		return err
 	}
@@ -397,13 +451,13 @@ func (a *App) runStatusChange(ctx context.Context, args []string, nextStatus str
 		nextStatus,
 		NowUTC(),
 		closedAt,
-		args[0],
+		internalID,
 	)
 	if err != nil {
 		return err
 	}
 
-	updated, err := a.fetchIssue(ctx, args[0])
+	updated, err := a.fetchIssueByInternalID(ctx, internalID)
 	if err != nil {
 		return err
 	}
@@ -414,7 +468,11 @@ func (a *App) runReopen(ctx context.Context, args []string) error {
 	if len(args) != 1 {
 		return &CLIError{Code: "usage", Message: "usage: ait reopen <id>", ExitCode: 64}
 	}
-	current, err := a.fetchIssue(ctx, args[0])
+	internalID, err := a.resolveIssueID(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	current, err := a.fetchIssueByInternalID(ctx, internalID)
 	if err != nil {
 		return err
 	}
@@ -427,13 +485,13 @@ func (a *App) runReopen(ctx context.Context, args []string) error {
 		`UPDATE issues SET status = ?, updated_at = ?, closed_at = NULL WHERE id = ?`,
 		StatusOpen,
 		NowUTC(),
-		args[0],
+		internalID,
 	)
 	if err != nil {
 		return err
 	}
 
-	updated, err := a.fetchIssue(ctx, args[0])
+	updated, err := a.fetchIssueByInternalID(ctx, internalID)
 	if err != nil {
 		return err
 	}
@@ -474,24 +532,30 @@ func (a *App) runDepAdd(ctx context.Context, args []string) error {
 	blockedID := args[0]
 	blockerID := args[1]
 
+	blockedInternalID, err := a.resolveIssueID(ctx, blockedID)
+	if err != nil {
+		return err
+	}
+	blockerInternalID, err := a.resolveIssueID(ctx, blockerID)
+	if err != nil {
+		return err
+	}
+
 	if blockedID == blockerID {
 		return &CLIError{Code: "validation", Message: "an issue cannot depend on itself", ExitCode: 65}
 	}
-	if _, err := a.fetchIssue(ctx, blockedID); err != nil {
-		return err
+	if blockedInternalID == blockerInternalID {
+		return &CLIError{Code: "validation", Message: "an issue cannot depend on itself", ExitCode: 65}
 	}
-	if _, err := a.fetchIssue(ctx, blockerID); err != nil {
-		return err
-	}
-	if a.hasDirectDependency(ctx, blockerID, blockedID) {
+	if a.hasDirectDependency(ctx, blockerInternalID, blockedInternalID) {
 		return &CLIError{Code: "validation", Message: "direct reciprocal dependencies are not allowed", ExitCode: 65}
 	}
 
-	_, err := a.db.ExecContext(
+	_, err = a.db.ExecContext(
 		ctx,
 		`INSERT INTO issue_dependencies (blocked_id, blocker_id, created_at) VALUES (?, ?, ?)`,
-		blockedID,
-		blockerID,
+		blockedInternalID,
+		blockerInternalID,
 		NowUTC(),
 	)
 	if err != nil {
@@ -509,11 +573,20 @@ func (a *App) runDepRemove(ctx context.Context, args []string) error {
 		return &CLIError{Code: "usage", Message: "usage: ait dep remove <blocked-id> <blocker-id>", ExitCode: 64}
 	}
 
+	blockedInternalID, err := a.resolveIssueID(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	blockerInternalID, err := a.resolveIssueID(ctx, args[1])
+	if err != nil {
+		return err
+	}
+
 	result, err := a.db.ExecContext(
 		ctx,
 		`DELETE FROM issue_dependencies WHERE blocked_id = ? AND blocker_id = ?`,
-		args[0],
-		args[1],
+		blockedInternalID,
+		blockerInternalID,
 	)
 	if err != nil {
 		return err
@@ -529,21 +602,26 @@ func (a *App) runDepList(ctx context.Context, args []string) error {
 	if len(args) != 1 {
 		return &CLIError{Code: "usage", Message: "usage: ait dep list <id>", ExitCode: 64}
 	}
-	if _, err := a.fetchIssue(ctx, args[0]); err != nil {
-		return err
-	}
-
-	blockers, err := a.fetchBlockers(ctx, args[0])
+	internalID, err := a.resolveIssueID(ctx, args[0])
 	if err != nil {
 		return err
 	}
-	blocks, err := a.fetchBlocks(ctx, args[0])
+	issue, err := a.fetchIssueByInternalID(ctx, internalID)
+	if err != nil {
+		return err
+	}
+
+	blockers, err := a.fetchBlockers(ctx, internalID)
+	if err != nil {
+		return err
+	}
+	blocks, err := a.fetchBlocks(ctx, internalID)
 	if err != nil {
 		return err
 	}
 
 	return PrintJSON(map[string]any{
-		"issue_id": args[0],
+		"issue_id": issue.ID,
 		"blockers": blockers,
 		"blocks":   blocks,
 	})
@@ -585,7 +663,12 @@ func (a *App) runNoteAdd(ctx context.Context, args []string) error {
 	if len(args) != 2 {
 		return &CLIError{Code: "usage", Message: "usage: ait note add <id> <body>", ExitCode: 64}
 	}
-	if _, err := a.fetchIssue(ctx, args[0]); err != nil {
+	internalID, err := a.resolveIssueID(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	issue, err := a.fetchIssueByInternalID(ctx, internalID)
+	if err != nil {
 		return err
 	}
 	body := strings.TrimSpace(args[1])
@@ -593,7 +676,7 @@ func (a *App) runNoteAdd(ctx context.Context, args []string) error {
 		return &CLIError{Code: "validation", Message: "note body is required", ExitCode: 65}
 	}
 
-	id, err := NewID()
+	noteID, err := NewID()
 	if err != nil {
 		return err
 	}
@@ -602,8 +685,8 @@ func (a *App) runNoteAdd(ctx context.Context, args []string) error {
 	_, err = a.db.ExecContext(
 		ctx,
 		`INSERT INTO issue_notes (id, issue_id, body, created_at) VALUES (?, ?, ?, ?)`,
-		id,
-		args[0],
+		noteID,
+		internalID,
 		body,
 		createdAt,
 	)
@@ -611,14 +694,14 @@ func (a *App) runNoteAdd(ctx context.Context, args []string) error {
 		return err
 	}
 
-	_, err = a.db.ExecContext(ctx, `UPDATE issues SET updated_at = ? WHERE id = ?`, NowUTC(), args[0])
+	_, err = a.db.ExecContext(ctx, `UPDATE issues SET updated_at = ? WHERE id = ?`, NowUTC(), internalID)
 	if err != nil {
 		return err
 	}
 
 	return PrintJSON(Note{
-		ID:        id,
-		IssueID:   args[0],
+		ID:        noteID,
+		IssueID:   issue.ID,
 		Body:      body,
 		CreatedAt: createdAt,
 	})
@@ -628,14 +711,19 @@ func (a *App) runNoteList(ctx context.Context, args []string) error {
 	if len(args) != 1 {
 		return &CLIError{Code: "usage", Message: "usage: ait note list <id>", ExitCode: 64}
 	}
-	if _, err := a.fetchIssue(ctx, args[0]); err != nil {
+	internalID, err := a.resolveIssueID(ctx, args[0])
+	if err != nil {
 		return err
 	}
-
-	items, err := a.fetchNotes(ctx, args[0])
+	issue, err := a.fetchIssueByInternalID(ctx, internalID)
 	if err != nil {
 		return err
 	}
 
-	return PrintJSON(map[string]any{"issue_id": args[0], "notes": items})
+	items, err := a.fetchNotes(ctx, internalID)
+	if err != nil {
+		return err
+	}
+
+	return PrintJSON(map[string]any{"issue_id": issue.ID, "notes": items})
 }
