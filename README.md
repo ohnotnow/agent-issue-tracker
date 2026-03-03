@@ -14,11 +14,10 @@ It is being actively built and dogfooded, but it should not be treated as stable
 
 Current limitations include:
 
-- schema evolution is still early and not finalised
 - command behaviour may change as the tool is dogfooded
-- compatibility and data migration guarantees do not exist yet
+- compatibility guarantees do not exist yet
 
-If you try it, assume the data model and CLI may change.
+Schema changes are now managed through a forward-only migration system, so existing databases are upgraded automatically on startup.
 
 ## Current Goals
 
@@ -27,8 +26,9 @@ The tool is optimized for agent workflow first:
 - create epics and tasks
 - model dependencies
 - store progress notes
+- claim issues to coordinate between multiple agents
 - resume work after session loss or conversation compaction
-- surface unblocked work via `ready`
+- surface unblocked work via `ready`, ordered by priority
 
 Human-friendly output is intentionally secondary for now. JSON is the default interface.
 
@@ -39,15 +39,18 @@ The current binary is `ait`.
 Implemented commands:
 
 - `init`
+- `config`
 - `create`
 - `show`
 - `list` (`--type`, `--status`, `--priority`, `--parent`, `--all`, `--long`, `--human`, `--tree`)
 - `status`
 - `search`
 - `update`
-- `close`
+- `close` (`--cascade`)
 - `reopen`
 - `cancel`
+- `claim`
+- `unclaim`
 - `ready` (`--type`, `--long`)
 - `dep add`
 - `dep remove`
@@ -60,7 +63,7 @@ Implemented commands:
 
 By default, `list` and `ready` return a slim view with only the fields an agent typically needs: `id`, `title`, `status`, `type`, and `priority`. This keeps token usage low and makes it easier to reason about results quickly.
 
-Pass `--long` to get the full issue record including `description`, `parent_id`, timestamps, and `closed_at`.
+Pass `--long` to get the full issue record including `description`, `parent_id`, `claimed_by`, timestamps, and `closed_at`.
 
 For human-friendly output, two display modes are available:
 
@@ -78,6 +81,41 @@ ait list --human --priority P1  # filtered tabular view
 ait ready --type task     # slim, tasks only (excludes epics)
 ait ready --long          # full record, all types
 ```
+
+## Issue Claiming
+
+When multiple agents share one tracker, claiming prevents duplicate work:
+
+```bash
+ait claim <id> <agent-name>    # mark an issue as being worked on
+ait unclaim <id>               # release the claim
+```
+
+If an issue is already claimed by another agent, `claim` returns a conflict error with the current holder's name. Claims are visible in `show` output via `claimed_by` and `claimed_at` fields.
+
+## Cascade Close
+
+By default, `close` only affects the specified issue. To close an epic and all of its descendants in one operation:
+
+```bash
+ait close <epic-id> --cascade
+```
+
+This recursively closes all open or in-progress children and grandchildren. Issues that are already closed or cancelled are skipped. The command returns the list of newly closed issues.
+
+## Ready Prioritisation
+
+The `ready` command surfaces unblocked issues ordered by priority (P0 first, then P1, P2, etc.), with creation order as a tiebreaker within the same priority level. This means the most urgent actionable work appears first.
+
+## Project Configuration
+
+Use `config` to check the current project settings without inspecting the database directly:
+
+```bash
+ait config
+```
+
+Returns the current `prefix` and `schema_version` as JSON.
 
 ## Dependency Cycle Detection
 
@@ -119,6 +157,12 @@ ait --db /path/to/other.db create --title "Task in another DB"
 ```
 
 This is useful for git worktrees (pointing back to the main repo's database), keeping separate databases for different subsystems, or using `:memory:` for testing.
+
+## Schema Versioning
+
+The database schema is managed through a forward-only migration system. Each migration is numbered and runs in its own transaction. On startup, the tool checks the current schema version and applies any pending migrations automatically.
+
+This means you can update the `ait` binary and your existing database will be upgraded transparently — no manual steps required. The current schema version is visible via `ait config`.
 
 ## Local Storage
 
