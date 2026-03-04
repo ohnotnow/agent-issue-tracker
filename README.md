@@ -58,6 +58,7 @@ Implemented commands:
 - `dep tree`
 - `note add`
 - `note list`
+- `export` (`--output`)
 
 ## Output Modes
 
@@ -102,6 +103,26 @@ ait close <epic-id> --cascade
 ```
 
 This recursively closes all open or in-progress children and grandchildren. Issues that are already closed or cancelled are skipped. The command returns the list of newly closed issues.
+
+## Markdown Export
+
+The `export` command produces a Markdown briefing for an issue and all its descendants. This is designed for delegating work to remote or cloud-based agents that don't have access to the `.ait/` database.
+
+```bash
+ait export <id>                     # print Markdown to stdout
+ait export <id> --output briefing.md  # write to file
+```
+
+For an epic, the output includes:
+
+- the epic title, ID, priority, and description
+- a `## Tasks` section with checkbox items (`[ ]` open, `[x]` closed, `[-]` cancelled)
+- dependencies and notes for each issue
+- a `## Summary` with counts
+
+Tasks are ordered by priority (P0 first), matching `ready` behaviour. For a single task with no children, only the header, description, notes, and dependencies are shown.
+
+The resulting file travels with git or rsync, is readable by any agent or human, and requires no reconciliation.
 
 ## Ready Prioritisation
 
