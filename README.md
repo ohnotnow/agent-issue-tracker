@@ -273,4 +273,4 @@ The current focus is to validate the workflow by using the tool on itself, tight
 ## Contributors
 
 - [ohnotnow](https://github.com/ohnotnow) — creator and maintainer
-- [nandi95](https://github.com/nandi95) — proposed the version check and self-update feature ([#1](https://github.com/ohnotnow/agent-issue-tracker/pull/1)), which inspired the implementation added in v0.0.9
+- [nandi95](https://github.com/nandi95) — version check code
