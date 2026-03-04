@@ -1405,3 +1405,169 @@ func TestMigrationsAreIdempotent(t *testing.T) {
 		t.Fatalf("unexpected title: %s", listed.Issues[0].Title)
 	}
 }
+
+// --- Export command tests ---
+
+func TestExportEpicWithChildren(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		runJSONCommand[map[string]string](t, a, []string{"init", "--prefix", "exp"}, nil)
+
+		var epic ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Auth System", "--type", "epic", "--description", "Implement authentication", "--priority", "P1"}, &epic)
+		var child1 ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Add login endpoint", "--parent", epic.ID, "--priority", "P1"}, &child1)
+		var child2 ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Add logout endpoint", "--parent", epic.ID, "--priority", "P2"}, &child2)
+
+		// Add a note to child1
+		runJSONCommand[ait.Note](t, a, []string{"note", "add", child1.ID, "Started implementation"}, nil)
+
+		// Add a dependency: child2 blocked by child1
+		runJSONCommand[map[string]any](t, a, []string{"dep", "add", child2.ID, child1.ID}, nil)
+
+		// Close child1
+		runJSONCommand[ait.Issue](t, a, []string{"close", child1.ID}, nil)
+
+		output := captureStdout(t, func() {
+			if err := a.Run(ctx, []string{"export", epic.ID}); err != nil {
+				t.Fatalf("export failed: %v", err)
+			}
+		})
+
+		// Check header
+		if !strings.Contains(output, "# Auth System (`"+epic.ID+"`) — P1") {
+			t.Fatalf("expected header with title and ID, got:\n%s", output)
+		}
+		if !strings.Contains(output, "Implement authentication") {
+			t.Fatalf("expected description in output:\n%s", output)
+		}
+
+		// Check tasks section
+		if !strings.Contains(output, "## Tasks") {
+			t.Fatalf("expected Tasks section:\n%s", output)
+		}
+
+		// Check checkboxes
+		if !strings.Contains(output, "[x] **Add login endpoint**") {
+			t.Fatalf("expected closed task checkbox:\n%s", output)
+		}
+		if !strings.Contains(output, "[ ] **Add logout endpoint**") {
+			t.Fatalf("expected open task checkbox:\n%s", output)
+		}
+
+		// Check dependency
+		if !strings.Contains(output, "**Dependencies:** blocked by `"+child1.ID+"`") {
+			t.Fatalf("expected dependency line:\n%s", output)
+		}
+
+		// Check note
+		if !strings.Contains(output, "Started implementation") {
+			t.Fatalf("expected note in output:\n%s", output)
+		}
+
+		// Check summary
+		if !strings.Contains(output, "Total: 2") {
+			t.Fatalf("expected summary with Total: 2:\n%s", output)
+		}
+
+		// Check priority ordering (P1 before P2)
+		p1Pos := strings.Index(output, "Add login endpoint")
+		p2Pos := strings.Index(output, "Add logout endpoint")
+		if p1Pos > p2Pos {
+			t.Fatalf("expected P1 task before P2 task in output")
+		}
+
+		// Should not be JSON
+		if strings.HasPrefix(strings.TrimSpace(output), "{") {
+			t.Fatalf("expected markdown, not JSON:\n%s", output)
+		}
+	})
+}
+
+func TestExportSingleTask(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var task ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Standalone task", "--description", "Just a task"}, &task)
+
+		output := captureStdout(t, func() {
+			if err := a.Run(ctx, []string{"export", task.ID}); err != nil {
+				t.Fatalf("export failed: %v", err)
+			}
+		})
+
+		if !strings.Contains(output, "# Standalone task") {
+			t.Fatalf("expected task title in header:\n%s", output)
+		}
+		if !strings.Contains(output, "Just a task") {
+			t.Fatalf("expected description:\n%s", output)
+		}
+		// No children, so no Tasks section or Summary
+		if strings.Contains(output, "## Tasks") {
+			t.Fatalf("expected no Tasks section for childless issue:\n%s", output)
+		}
+		if strings.Contains(output, "## Summary") {
+			t.Fatalf("expected no Summary for childless issue:\n%s", output)
+		}
+	})
+}
+
+func TestExportNotFound(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		err := runExpectError(t, a, []string{"export", "nonexistent"})
+		if err == nil {
+			t.Fatal("expected not_found error")
+		}
+		if !strings.Contains(err.Error(), "not found") {
+			t.Fatalf("expected not found message, got: %s", err.Error())
+		}
+	})
+}
+
+func TestExportToFile(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var task ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "File export test"}, &task)
+
+		outPath := filepath.Join(t.TempDir(), "briefing.md")
+
+		// Should not print to stdout when --output is used
+		output := captureStdout(t, func() {
+			if err := a.Run(ctx, []string{"export", task.ID, "--output", outPath}); err != nil {
+				t.Fatalf("export --output failed: %v", err)
+			}
+		})
+		if strings.TrimSpace(output) != "" {
+			t.Fatalf("expected no stdout with --output, got: %s", output)
+		}
+
+		// Check file was written
+		data, err := os.ReadFile(outPath)
+		if err != nil {
+			t.Fatalf("failed to read output file: %v", err)
+		}
+		content := string(data)
+		if !strings.Contains(content, "# File export test") {
+			t.Fatalf("expected title in file content:\n%s", content)
+		}
+	})
+}
+
+func TestExportCancelledTask(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var epic ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Epic", "--type", "epic"}, &epic)
+		var child ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Cancelled task", "--parent", epic.ID}, &child)
+		runJSONCommand[ait.Issue](t, a, []string{"cancel", child.ID}, nil)
+
+		output := captureStdout(t, func() {
+			if err := a.Run(ctx, []string{"export", epic.ID}); err != nil {
+				t.Fatalf("export failed: %v", err)
+			}
+		})
+
+		if !strings.Contains(output, "[-] **Cancelled task**") {
+			t.Fatalf("expected cancelled checkbox [-]:\n%s", output)
+		}
+	})
+}

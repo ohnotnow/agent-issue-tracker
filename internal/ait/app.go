@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 )
 
@@ -55,6 +56,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return a.runDependency(ctx, args[1:])
 	case "note":
 		return a.runNote(ctx, args[1:])
+	case "export":
+		return a.runExport(ctx, args[1:])
 	default:
 		return &CLIError{
 			Code:     "usage",
@@ -1025,6 +1028,76 @@ func (a *App) runNoteList(ctx context.Context, args []string) error {
 	return PrintJSON(map[string]any{"issue_id": issue.ID, "notes": items})
 }
 
+func (a *App) runExport(ctx context.Context, args []string) error {
+	// Extract --output from anywhere in args since the ID is positional.
+	var outputPath string
+	var filtered []string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--output" && i+1 < len(args) {
+			outputPath = args[i+1]
+			i++ // skip value
+		} else if strings.HasPrefix(args[i], "--output=") {
+			outputPath = strings.TrimPrefix(args[i], "--output=")
+		} else {
+			filtered = append(filtered, args[i])
+		}
+	}
+
+	if len(filtered) != 1 {
+		return &CLIError{Code: "usage", Message: "usage: ait export <id> [--output path.md]", ExitCode: 64}
+	}
+
+	internalID, err := a.resolveIssueID(ctx, filtered[0])
+	if err != nil {
+		return err
+	}
+
+	root, err := a.fetchIssueByInternalID(ctx, internalID)
+	if err != nil {
+		return err
+	}
+
+	descendants, err := a.fetchAllDescendants(ctx, internalID)
+	if err != nil {
+		return err
+	}
+
+	// Build notes and blockers maps for root + all descendants
+	notesMap := make(map[string][]Note)
+	blockersMap := make(map[string][]IssueRef)
+
+	allIssues := append([]Issue{root}, descendants...)
+	for _, iss := range allIssues {
+		issInternalID, err := a.resolveIssueID(ctx, iss.ID)
+		if err != nil {
+			return err
+		}
+		notes, err := a.fetchNotes(ctx, issInternalID)
+		if err != nil {
+			return err
+		}
+		if len(notes) > 0 {
+			notesMap[iss.ID] = notes
+		}
+		blockers, err := a.fetchBlockers(ctx, issInternalID)
+		if err != nil {
+			return err
+		}
+		if len(blockers) > 0 {
+			blockersMap[iss.ID] = blockers
+		}
+	}
+
+	md := FormatMarkdownExport(root, descendants, notesMap, blockersMap)
+
+	if strings.TrimSpace(outputPath) != "" {
+		return os.WriteFile(outputPath, []byte(md), 0o644)
+	}
+
+	fmt.Print(md)
+	return nil
+}
+
 const helpText = `Usage: ait [--db <path>] <command> [options]
 
 Commands:
@@ -1047,6 +1120,7 @@ Commands:
   unclaim <id>                               Release a claim
   dep     add|remove|list|tree <id> [<id>]   Manage dependencies
   note    add|list <id> [body]               Manage notes
+  export  <id> [--output path.md]           Export Markdown briefing
   help                                       Show this help
 
 Global options:

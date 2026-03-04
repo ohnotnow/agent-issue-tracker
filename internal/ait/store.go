@@ -318,6 +318,27 @@ func (a *App) readyIssueRefs(ctx context.Context, typeFilter string) ([]IssueRef
 	return a.queryIssueRefs(ctx, query, params...)
 }
 
+func (a *App) fetchAllDescendants(ctx context.Context, parentID int64) ([]Issue, error) {
+	children, err := a.fetchChildren(ctx, parentID)
+	if err != nil {
+		return nil, err
+	}
+	all := make([]Issue, 0, len(children))
+	for _, child := range children {
+		all = append(all, child)
+		internalID, err := a.resolveIssueID(ctx, child.ID)
+		if err != nil {
+			return nil, err
+		}
+		grandchildren, err := a.fetchAllDescendants(ctx, internalID)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, grandchildren...)
+	}
+	return all, nil
+}
+
 func (a *App) validateParent(ctx context.Context, parentID string) error {
 	_, err := a.fetchIssue(ctx, parentID)
 	return err

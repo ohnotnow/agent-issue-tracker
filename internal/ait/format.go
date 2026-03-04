@@ -2,6 +2,7 @@ package ait
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -123,6 +124,103 @@ func FormatTreeList(issues []Issue) string {
 				child.Status,
 			))
 		}
+	}
+
+	return b.String()
+}
+
+func statusCheckbox(status string) string {
+	switch status {
+	case StatusClosed:
+		return "[x]"
+	case StatusCancelled:
+		return "[-]"
+	default:
+		return "[ ]"
+	}
+}
+
+// FormatMarkdownExport renders a Markdown briefing for an issue and its descendants.
+func FormatMarkdownExport(root Issue, children []Issue, notesMap map[string][]Note, blockersMap map[string][]IssueRef) string {
+	var b strings.Builder
+
+	// Header
+	b.WriteString(fmt.Sprintf("# %s (`%s`) — %s\n", root.Title, root.ID, root.Priority))
+	if root.Description != "" {
+		b.WriteString("\n")
+		b.WriteString(root.Description)
+		b.WriteString("\n")
+	}
+
+	// Root notes
+	if notes, ok := notesMap[root.ID]; ok && len(notes) > 0 {
+		b.WriteString("\n**Notes:**\n")
+		for _, n := range notes {
+			date := n.CreatedAt[:10]
+			b.WriteString(fmt.Sprintf("- %s: %s\n", date, n.Body))
+		}
+	}
+
+	// Root dependencies
+	if blockers, ok := blockersMap[root.ID]; ok && len(blockers) > 0 {
+		ids := make([]string, len(blockers))
+		for i, bl := range blockers {
+			ids[i] = "`" + bl.ID + "`"
+		}
+		b.WriteString(fmt.Sprintf("\n**Dependencies:** blocked by %s\n", strings.Join(ids, ", ")))
+	}
+
+	// Sort children by priority then creation order (stable sort preserves creation order)
+	sorted := make([]Issue, len(children))
+	copy(sorted, children)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].Priority < sorted[j].Priority
+	})
+
+	if len(sorted) > 0 {
+		b.WriteString("\n## Tasks\n\n")
+		for _, child := range sorted {
+			checkbox := statusCheckbox(child.Status)
+			b.WriteString(fmt.Sprintf("- %s **%s** (`%s`) — %s\n", checkbox, child.Title, child.ID, child.Priority))
+
+			if child.Description != "" {
+				b.WriteString("\n")
+				b.WriteString(fmt.Sprintf("  %s\n", child.Description))
+			}
+
+			if blockers, ok := blockersMap[child.ID]; ok && len(blockers) > 0 {
+				ids := make([]string, len(blockers))
+				for i, bl := range blockers {
+					ids[i] = "`" + bl.ID + "`"
+				}
+				b.WriteString(fmt.Sprintf("\n  **Dependencies:** blocked by %s\n", strings.Join(ids, ", ")))
+			}
+
+			if notes, ok := notesMap[child.ID]; ok && len(notes) > 0 {
+				b.WriteString("\n  **Notes:**\n")
+				for _, n := range notes {
+					date := n.CreatedAt[:10]
+					b.WriteString(fmt.Sprintf("  - %s: %s\n", date, n.Body))
+				}
+			}
+		}
+	}
+
+	// Summary
+	total := len(sorted)
+	if total > 0 {
+		var open, closed, cancelled int
+		for _, child := range sorted {
+			switch child.Status {
+			case StatusClosed:
+				closed++
+			case StatusCancelled:
+				cancelled++
+			default:
+				open++
+			}
+		}
+		b.WriteString(fmt.Sprintf("\n## Summary\n\n- Total: %d | Open: %d | Closed: %d | Cancelled: %d\n", total, open, closed, cancelled))
 	}
 
 	return b.String()
