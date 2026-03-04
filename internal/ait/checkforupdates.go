@@ -2,10 +2,7 @@ package ait
 
 import (
 	"fmt"
-	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -13,7 +10,7 @@ import (
 
 const repoURL = "https://github.com/ohnotnow/agent-issue-tracker"
 
-func SelfUpdate(currentVersion string) error {
+func CheckForUpdates(currentVersion string) error {
 	if currentVersion == "dev" {
 		return &CLIError{
 			Code:    "self_update",
@@ -36,58 +33,11 @@ func SelfUpdate(currentVersion string) error {
 	asset := assetName()
 	downloadURL := fmt.Sprintf("%s/releases/download/%s/%s", repoURL, latestTag, asset)
 
-	fmt.Fprintf(os.Stderr, "Updating %s -> %s ...\n", currentVersion, latestTag)
-
-	execPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("finding executable path: %w", err)
-	}
-	execPath, err = filepath.EvalSymlinks(execPath)
-	if err != nil {
-		return fmt.Errorf("resolving symlinks: %w", err)
-	}
-
-	resp, err := http.Get(downloadURL)
-	if err != nil {
-		return fmt.Errorf("downloading %s: %w", asset, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("downloading %s: HTTP %d", asset, resp.StatusCode)
-	}
-
-	dir := filepath.Dir(execPath)
-	tmp, err := os.CreateTemp(dir, ".ait-update-*")
-	if err != nil {
-		return fmt.Errorf("creating temp file: %w", err)
-	}
-	tmpPath := tmp.Name()
-
-	if _, err := io.Copy(tmp, resp.Body); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
-		return fmt.Errorf("writing update: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("closing temp file: %w", err)
-	}
-
-	if err := os.Chmod(tmpPath, 0o755); err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("setting permissions: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, execPath); err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("replacing binary: %w", err)
-	}
-
 	return PrintJSON(map[string]any{
-		"status":      "updated",
-		"old_version": currentVersion,
-		"new_version": latestTag,
+		"status":       "update_available",
+		"old_version":  currentVersion,
+		"new_version":  latestTag,
+		"download_url": downloadURL,
 	})
 }
 

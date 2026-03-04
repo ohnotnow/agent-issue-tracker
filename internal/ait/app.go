@@ -1121,7 +1121,7 @@ Commands:
   dep     add|remove|list|tree <id> [<id>]   Manage dependencies
   note    add|list <id> [body]               Manage notes
   export  <id> [--output path.md]            Export Markdown briefing
-  self-update                                Update to latest release
+  check-for-updates                          Check for newer releases
   help                                       Show this help
 
 Global options:

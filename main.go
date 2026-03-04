@@ -28,8 +28,8 @@ func main() {
 		return
 	}
 
-	if args[0] == "self-update" {
-		if err := ait.SelfUpdate(version); err != nil {
+	if args[0] == "check-for-updates" {
+		if err := ait.CheckForUpdates(version); err != nil {
 			ait.ExitWithError(ait.NormalizeError(err))
 		}
 		return
