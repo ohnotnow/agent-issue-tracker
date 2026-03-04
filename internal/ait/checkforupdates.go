@@ -10,35 +10,23 @@ import (
 
 const repoURL = "https://github.com/ohnotnow/agent-issue-tracker"
 
-func CheckForUpdates(currentVersion string) error {
+// VersionString returns the version and, for release builds, checks if a
+// newer version is available on GitHub. If the check fails it silently
+// returns just the current version.
+func VersionString(currentVersion string) string {
 	if currentVersion == "dev" {
-		return &CLIError{
-			Code:    "self_update",
-			Message: "self-update requires a release build (version is \"dev\")",
-		}
+		return currentVersion
 	}
 
 	latestTag, err := fetchLatestTag()
-	if err != nil {
-		return fmt.Errorf("checking latest version: %w", err)
-	}
-
-	if latestTag == currentVersion {
-		return PrintJSON(map[string]any{
-			"status":  "up_to_date",
-			"version": currentVersion,
-		})
+	if err != nil || latestTag == currentVersion {
+		return currentVersion
 	}
 
 	asset := assetName()
 	downloadURL := fmt.Sprintf("%s/releases/download/%s/%s", repoURL, latestTag, asset)
 
-	return PrintJSON(map[string]any{
-		"status":       "update_available",
-		"old_version":  currentVersion,
-		"new_version":  latestTag,
-		"download_url": downloadURL,
-	})
+	return fmt.Sprintf("%s - newer version %s available at %s", currentVersion, latestTag, downloadURL)
 }
 
 func fetchLatestTag() (string, error) {

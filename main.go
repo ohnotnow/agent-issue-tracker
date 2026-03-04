@@ -24,14 +24,7 @@ func main() {
 	}
 
 	if args[0] == "-v" || args[0] == "--version" {
-		fmt.Println(version)
-		return
-	}
-
-	if args[0] == "check-for-updates" {
-		if err := ait.CheckForUpdates(version); err != nil {
-			ait.ExitWithError(ait.NormalizeError(err))
-		}
+		fmt.Println(ait.VersionString(version))
 		return
 	}
 
