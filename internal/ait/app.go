@@ -1120,7 +1120,8 @@ Commands:
   unclaim <id>                               Release a claim
   dep     add|remove|list|tree <id> [<id>]   Manage dependencies
   note    add|list <id> [body]               Manage notes
-  export  <id> [--output path.md]           Export Markdown briefing
+  export  <id> [--output path.md]            Export Markdown briefing
+  self-update                                Update to latest release
   help                                       Show this help
 
 Global options:

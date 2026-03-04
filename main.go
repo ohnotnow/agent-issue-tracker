@@ -28,6 +28,13 @@ func main() {
 		return
 	}
 
+	if args[0] == "self-update" {
+		if err := ait.SelfUpdate(version); err != nil {
+			ait.ExitWithError(ait.NormalizeError(err))
+		}
+		return
+	}
+
 	app, err := ait.Open(ctx, dbPath)
 	if err != nil {
 		ait.ExitWithError(ait.NormalizeError(err))
