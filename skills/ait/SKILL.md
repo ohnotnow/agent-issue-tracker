@@ -145,6 +145,12 @@ ait --db /path/to/other.db list   # Use a different database file
 Useful for git worktrees (pointing back to the main repo's database) or keeping
 separate databases for different subsystems.
 
+## Delegating Work
+
+If you are supervising sub-agents or delegating work to agents that don't have
+access to `ait`, see `DELEGATION.md` (in this skill directory) for the
+export → delegate → reconcile workflow.
+
 ## Tips
 
 - Prefer `ait ready` over `ait list` when deciding what to work on — it filters

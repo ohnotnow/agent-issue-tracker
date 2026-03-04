@@ -196,21 +196,24 @@ That database stores:
 
 This keeps issue state close to the codebase it belongs to and makes it easy to inspect or back up.
 
-## Claude Code Skill
+## Claude Code Skills
 
-The repository includes a `SKILL.md` file — a [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code) that teaches Claude how to use `ait` effectively.
+The `skills/ait/` directory contains pre-written [Claude Code skills](https://docs.anthropic.com/en/docs/claude-code) that teach Claude how to use `ait` effectively:
 
-To use it, copy `SKILL.md` into your Claude skills directory:
+- **`SKILL.md`** — core command reference, workflow patterns, and best practices
+- **`DELEGATION.md`** — guide for delegating work to sub-agents via Markdown export
+
+To install, copy the skill directory into your Claude skills location:
 
 ```bash
 # For a single project (from the project root):
-mkdir -p .claude/skills && cp SKILL.md .claude/skills/ait/SKILL.md
+cp -r skills/ait .claude/skills/ait
 
 # Or globally (available in all projects):
-mkdir -p ~/.claude/skills/ait && cp SKILL.md ~/.claude/skills/ait/SKILL.md
+cp -r skills/ait ~/.claude/skills/ait
 ```
 
-Once installed, Claude Code will know the full command set, workflow patterns, and best practices for working with `ait`.
+Once installed, Claude Code will know the full command set and can follow the delegation workflow when supervising sub-agents.
 
 ## Development
 
