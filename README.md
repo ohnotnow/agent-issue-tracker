@@ -269,3 +269,8 @@ go build -ldflags "-X agent-issue-tracker/internal/ait.Version=v0.1.0 -X agent-i
 Do not rely on this for important or long-lived work yet.
 
 The current focus is to validate the workflow by using the tool on itself, tighten the schema and command contract, and improve safety before calling it a usable v1.
+
+## Contributors
+
+- [ohnotnow](https://github.com/ohnotnow) — creator and maintainer
+- [nandi95](https://github.com/nandi95) — proposed the version check and self-update feature ([#1](https://github.com/ohnotnow/agent-issue-tracker/pull/1)), which inspired the implementation added in v0.0.9
