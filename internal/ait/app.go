@@ -1125,6 +1125,7 @@ Commands:
 
 Global options:
   --db <path>   Use a specific database file (default: .ait/ait.db)
+  -v, --version Show version
 `
 
 func PrintHelp() {

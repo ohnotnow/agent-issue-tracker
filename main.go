@@ -8,6 +8,8 @@ import (
 	"agent-issue-tracker/internal/ait"
 )
 
+var version = "dev"
+
 func main() {
 	ctx := context.Background()
 
@@ -18,6 +20,11 @@ func main() {
 
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
 		ait.PrintHelp()
+		return
+	}
+
+	if args[0] == "-v" || args[0] == "--version" {
+		fmt.Println(version)
 		return
 	}
 
