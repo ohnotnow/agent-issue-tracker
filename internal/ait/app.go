@@ -1145,10 +1145,12 @@ Commands:
   note    add|list <id> [body]               Manage notes
   export  <id> [--output path.md]           Export Markdown briefing
   flush   [--dry-run]                       Purge closed/cancelled issues
+  version                                    Show version and check for updates
   help                                       Show this help
 
 Global options:
-  --db <path>   Use a specific database file (default: .ait/ait.db)
+  --db <path>     Use a specific database file (default: .ait/ait.db)
+  --version       Show version and check for updates
 `
 
 func PrintHelp() {

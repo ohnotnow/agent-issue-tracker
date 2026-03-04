@@ -66,6 +66,7 @@ Implemented commands:
 - `dep tree`
 - `note add`
 - `note list`
+- `version`
 - `export` (`--output`)
 
 ## Output Modes
@@ -251,6 +252,16 @@ To build the binary:
 
 ```bash
 GOCACHE=$(pwd)/.gocache go build -o ait .
+```
+
+### Version Embedding
+
+Release builds inject the version and repository URL at compile time via ldflags. For development builds, the version defaults to `dev` and the update check is skipped.
+
+If you fork this repository and want the update check to point at your own releases, either update the `RepoURL` default in `internal/ait/version.go` or pass it via ldflags:
+
+```bash
+go build -ldflags "-X agent-issue-tracker/internal/ait.Version=v0.1.0 -X agent-issue-tracker/internal/ait.RepoURL=https://github.com/youruser/yourfork" -o ait .
 ```
 
 ## Warning

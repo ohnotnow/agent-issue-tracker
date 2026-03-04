@@ -21,6 +21,13 @@ func main() {
 		return
 	}
 
+	if args[0] == "version" || args[0] == "--version" {
+		if err := ait.RunVersion(); err != nil {
+			ait.ExitWithError(ait.NormalizeError(err))
+		}
+		return
+	}
+
 	app, err := ait.Open(ctx, dbPath)
 	if err != nil {
 		ait.ExitWithError(ait.NormalizeError(err))
