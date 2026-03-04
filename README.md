@@ -29,8 +29,15 @@ The tool is optimized for agent workflow first:
 - claim issues to coordinate between multiple agents
 - resume work after session loss or conversation compaction
 - surface unblocked work via `ready`, ordered by priority
+- allow delegation of work to sub-agents
 
 Human-friendly output is intentionally secondary for now. JSON is the default interface.
+
+## What it is not 
+
+The tool is not a replacement for a real issue tracker.  The workflow is envisioned as 'developer has a plan/issues/feature - gets the coding agent to plan them out (or does it themselves), then the actual coding agent manages the sub-epics/issues for that work alone.
+
+It's not designed to handle cross-team shared issues, work, projects.  The internal database should be added to .gitignore.
 
 ## Current Command Set
 
