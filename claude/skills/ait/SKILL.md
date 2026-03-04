@@ -87,7 +87,7 @@ ait unclaim <id>               # Release the claim
 If another agent already holds the claim, `claim` returns a conflict error with
 the current holder's name.
 
-The agent-name parameter is for you to have a little creative fun if you want to.  You're free to use your real name, or pick a name that amuses and delights you.  If the user seems like a terribly serious person - maybe steer away from 'plush-plush-tooshie-shake' though ;-)
+The agent-name parameter is for you to have a little creative fun if you want to.  You're free to use your real name, or pick a name that amuses and delights you or a project-specific name for your 'agentic persona'.  If the user seems like a terribly serious person - maybe steer away from 'plush-plush-tooshie-shake' though ;-)
 
 ## Issue Types
 - `epic` — container for related tasks
