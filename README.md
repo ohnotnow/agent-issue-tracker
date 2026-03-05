@@ -211,6 +211,19 @@ The `claude/` directory contains pre-written skills and agents that teach an age
 
 To install, copy the skill and agent directories into your agents configuration directory (eg, `~/.claude/skills/`, `~/.claude/agents/`
 
+You might also want to allow the agent to run `ait` and use the `ait` skill without needing permission.  For claude code for example, in `~/.claude/settings.json` :
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(ait *)",
+      "Skill(ait)"
+    ]
+  }
+}
+```
+
 ## Development
 
 To run the test suite:
