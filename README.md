@@ -292,6 +292,10 @@ If you fork this repository and want the update check to point at your own relea
 go build -ldflags "-X agent-issue-tracker/internal/ait.Version=v0.1.0 -X agent-issue-tracker/internal/ait.RepoURL=https://github.com/youruser/yourfork" -o ait .
 ```
 
+### Web UI
+
+If you'd like a web UI to monitor the progress of your agent - there is a sibling project at [ohnotnow/web-ait](https://github.com/ohnotnow/web-ait)
+
 ### Technical Notes
 
 There is a [technical overview](TECHNICAL_OVERVIEW.md) document that explains the internals of the tool.
