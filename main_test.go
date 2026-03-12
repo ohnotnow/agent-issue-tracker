@@ -1132,6 +1132,44 @@ func TestListTree(t *testing.T) {
 	})
 }
 
+func TestListTreeThreeLevels(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		runJSONCommand[map[string]string](t, a, []string{"init", "--prefix", "deep"}, nil)
+
+		var epic ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Epic", "--type", "epic"}, &epic)
+		var phase ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Phase 1", "--parent", epic.ID}, &phase)
+		var task ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Impl task", "--parent", phase.ID}, &task)
+
+		// --tree should show all three levels
+		treeOut := captureStdout(t, func() {
+			if err := a.Run(ctx, []string{"list", "--tree"}); err != nil {
+				t.Fatalf("list --tree failed: %v", err)
+			}
+		})
+
+		if !strings.Contains(treeOut, task.ID) {
+			t.Fatalf("expected grandchild %s in --tree output:\n%s", task.ID, treeOut)
+		}
+		if !strings.Contains(treeOut, "Impl task") {
+			t.Fatalf("expected grandchild title in --tree output:\n%s", treeOut)
+		}
+
+		// --human should also show all three levels
+		humanOut := captureStdout(t, func() {
+			if err := a.Run(ctx, []string{"list", "--human"}); err != nil {
+				t.Fatalf("list --human failed: %v", err)
+			}
+		})
+
+		if !strings.Contains(humanOut, "Impl task") {
+			t.Fatalf("expected grandchild title in --human output:\n%s", humanOut)
+		}
+	})
+}
+
 func TestListHumanAndTreeMutuallyExclusive(t *testing.T) {
 	testApp(t, func(ctx context.Context, a *ait.App) {
 		err := runExpectError(t, a, []string{"list", "--human", "--tree"})

@@ -77,19 +77,27 @@ func FormatHumanList(issues []Issue) string {
 			root.Status,
 		))
 
-		children := g.childrenByParent[root.ID]
-		for _, child := range children {
-			suffix := childSuffix(child.ID, root.ID)
-			b.WriteString(fmt.Sprintf("  %-9s  %-45s        %-2s  %s\n",
-				suffix,
-				truncateTitle(child.Title, 45),
-				child.Priority,
-				child.Status,
-			))
-		}
+		writeHumanChildren(&b, g, root.ID, root.ID, 1)
 	}
 
 	return b.String()
+}
+
+func writeHumanChildren(b *strings.Builder, g groupedIssues, parentID, rootID string, depth int) {
+	children := g.childrenByParent[parentID]
+	indent := strings.Repeat("  ", depth)
+	for _, child := range children {
+		suffix := childSuffix(child.ID, rootID)
+		b.WriteString(fmt.Sprintf("%s%-*s  %-45s        %-2s  %s\n",
+			indent,
+			11-2*depth,
+			suffix,
+			truncateTitle(child.Title, 45),
+			child.Priority,
+			child.Status,
+		))
+		writeHumanChildren(b, g, child.ID, rootID, depth+1)
+	}
 }
 
 // FormatTreeList renders a parent-child hierarchy using tree connectors.
@@ -110,23 +118,34 @@ func FormatTreeList(issues []Issue) string {
 			root.Status,
 		))
 
-		children := g.childrenByParent[root.ID]
-		for j, child := range children {
-			connector := "├── "
-			if j == len(children)-1 {
-				connector = "└── "
-			}
-			b.WriteString(fmt.Sprintf("%s%s  %s  (%s, %s)\n",
-				connector,
-				child.ID,
-				truncateTitle(child.Title, 45),
-				child.Priority,
-				child.Status,
-			))
-		}
+		writeTreeChildren(&b, g, root.ID, "")
 	}
 
 	return b.String()
+}
+
+func writeTreeChildren(b *strings.Builder, g groupedIssues, parentID, prefix string) {
+	children := g.childrenByParent[parentID]
+	for j, child := range children {
+		isLast := j == len(children)-1
+		connector := "├── "
+		if isLast {
+			connector = "└── "
+		}
+		b.WriteString(fmt.Sprintf("%s%s%s  %s  (%s, %s)\n",
+			prefix,
+			connector,
+			child.ID,
+			truncateTitle(child.Title, 45),
+			child.Priority,
+			child.Status,
+		))
+		childPrefix := prefix + "│   "
+		if isLast {
+			childPrefix = prefix + "    "
+		}
+		writeTreeChildren(b, g, child.ID, childPrefix)
+	}
 }
 
 func statusCheckbox(status string) string {
