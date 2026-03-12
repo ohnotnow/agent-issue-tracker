@@ -54,7 +54,6 @@ func registerCommands() []Command {
 		{
 			Name:    "init",
 			Summary: "Set project prefix for issue IDs",
-			Usage:   "--prefix <value>",
 			Help: `Usage: ait init [--prefix <value>]
 
 Set or auto-generate the project prefix used for hierarchical issue IDs.
@@ -85,10 +84,8 @@ Show the current project configuration (prefix, schema version).
 			},
 		},
 		{
-			Name:      "create",
-			Summary:   "Create a new issue",
-			Usage:     "--title <t> [--type] [--parent]",
-			UsageCont: "[--description] [--priority]",
+			Name:    "create",
+			Summary: "Create a new issue",
 			Help: `Usage: ait create --title <t> [flags]
 
 Create a new issue (task or epic).
@@ -114,7 +111,7 @@ Examples:
 		{
 			Name:    "show",
 			Summary: "Show issue details and notes",
-			Usage:   "<id>",
+			Args:    "<id>",
 			Help: `Usage: ait show <id>
 
 Show full details for an issue, including children, dependencies, and notes.
@@ -129,10 +126,8 @@ Examples:
 			},
 		},
 		{
-			Name:      "list",
-			Summary:   "List issues",
-			Usage:     "[--type] [--status] [--priority]",
-			UsageCont: "[--parent] [--all] [--long]",
+			Name:    "list",
+			Summary: "List issues",
 			Help: `Usage: ait list [flags]
 
 List issues with optional filters and output formats.
@@ -162,7 +157,7 @@ Examples:
 		{
 			Name:    "search",
 			Summary: "Search issues by text",
-			Usage:   "<query>",
+			Args:    "<query>",
 			Help: `Usage: ait search <query>
 
 Search issues by title or description (case-insensitive).
@@ -191,7 +186,6 @@ Show a summary of issue counts by status, plus the number of ready issues.
 		{
 			Name:    "ready",
 			Summary: "List unblocked issues",
-			Usage:   "[--type] [--long]",
 			Help: `Usage: ait ready [flags]
 
 List issues that are unblocked (all dependencies closed).
@@ -211,10 +205,9 @@ Examples:
 			},
 		},
 		{
-			Name:      "update",
-			Summary:   "Update an issue",
-			Usage:     "<id> --title|--description",
-			UsageCont: "|--status|--priority",
+			Name:    "update",
+			Summary: "Update an issue",
+			Args:    "<id>",
 			Help: `Usage: ait update <id> [flags]
 
 Update fields on an existing issue.
@@ -238,7 +231,7 @@ Examples:
 		{
 			Name:    "close",
 			Summary: "Close an issue (or subtree)",
-			Usage:   "<id> [--cascade]",
+			Args:    "<id>",
 			Help: `Usage: ait close <id> [--cascade]
 
 Close an issue. With --cascade, close the entire subtree.
@@ -259,7 +252,7 @@ Examples:
 		{
 			Name:    "reopen",
 			Summary: "Reopen a closed/cancelled issue",
-			Usage:   "<id>",
+			Args:    "<id>",
 			Help: `Usage: ait reopen <id>
 
 Reopen a closed or cancelled issue (sets status back to open).
@@ -275,7 +268,7 @@ Examples:
 		{
 			Name:    "cancel",
 			Summary: "Cancel an issue",
-			Usage:   "<id>",
+			Args:    "<id>",
 			Help: `Usage: ait cancel <id>
 
 Cancel an issue.
@@ -291,7 +284,7 @@ Examples:
 		{
 			Name:    "claim",
 			Summary: "Claim an issue for an agent",
-			Usage:   "<id> <agent-name>",
+			Args:    "<id> <agent-name>",
 			Help: `Usage: ait claim <id> <agent-name>
 
 Claim an issue for an agent. Fails if already claimed.
@@ -307,7 +300,7 @@ Examples:
 		{
 			Name:    "unclaim",
 			Summary: "Release a claim",
-			Usage:   "<id>",
+			Args:    "<id>",
 			Help: `Usage: ait unclaim <id>
 
 Release a claim on an issue.
@@ -323,7 +316,7 @@ Examples:
 		{
 			Name:    "dep",
 			Summary: "Manage dependencies",
-			Usage:   "add|remove|list|tree <id> [<id>]",
+			Args:    "add|remove|list|tree <id> [<id>]",
 			Help: `Usage: ait dep <subcommand> ...
 
 Manage issue dependencies.
@@ -347,7 +340,7 @@ Examples:
 		{
 			Name:    "note",
 			Summary: "Manage notes",
-			Usage:   "add|list <id> [body]",
+			Args:    "add|list <id> [body]",
 			Help: `Usage: ait note <subcommand> ...
 
 Manage issue notes.
@@ -368,7 +361,7 @@ Examples:
 		{
 			Name:    "export",
 			Summary: "Export Markdown briefing",
-			Usage:   "<id> [--output path.md]",
+			Args:    "<id>",
 			Help: `Usage: ait export <id> [--output path.md]
 
 Export an issue and its descendants as a Markdown briefing document.
@@ -389,7 +382,6 @@ Examples:
 		{
 			Name:    "flush",
 			Summary: "Purge closed/cancelled issues",
-			Usage:   "[--dry-run]",
 			Help: `Usage: ait flush [--dry-run]
 
 Purge closed/cancelled root issues whose entire subtree is also terminal.
@@ -410,7 +402,7 @@ Examples:
 		{
 			Name:    "completion",
 			Summary: "Print shell completion script",
-			Usage:   "bash|zsh",
+			Args:    "bash|zsh",
 			Help: `Usage: ait completion <bash|zsh>
 
 Print a shell completion script to stdout. Source it in your shell profile.

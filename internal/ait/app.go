@@ -423,6 +423,10 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return &CLIError{Code: "usage", Message: "usage: ait update <id> [flags]", ExitCode: 64}
 	}
+	if args[0] == "--help" || args[0] == "-h" {
+		PrintCommandHelp("update")
+		return nil
+	}
 	id := args[0]
 	internalID, err := a.resolveIssueID(ctx, id)
 	if err != nil {

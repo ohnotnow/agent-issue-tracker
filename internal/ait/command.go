@@ -8,14 +8,13 @@ import (
 
 // Command describes a single CLI subcommand.
 type Command struct {
-	Name      string
-	Summary   string   // one-liner for global help
-	Usage     string   // flag summary for global help, e.g. "--title <t> [--type]"
-	UsageCont string   // optional continuation line for wide usage
-	Help      string   // full per-command help text (hand-written, with examples)
-	Flags     []string // flag names for completion scripts
-	NeedsDB   bool     // false for help, version, completion
-	Run       func(a *App, ctx context.Context, args []string) error
+	Name    string
+	Summary string   // one-liner for both global and per-command help
+	Args    string   // positional args pattern, e.g. "<id>", "<query>", "bash|zsh"
+	Help    string   // full per-command help text (hand-written, with examples)
+	Flags   []string // flag names — source of truth for completion AND global help
+	NeedsDB bool     // false for help, version, completion
+	Run     func(a *App, ctx context.Context, args []string) error
 }
 
 var commands []Command
@@ -55,19 +54,33 @@ func CommandFlags(name string) []string {
 	return cmd.Flags
 }
 
+func usageSummary(cmd Command) string {
+	var parts []string
+	if cmd.Args != "" {
+		parts = append(parts, cmd.Args)
+	}
+	if len(cmd.Flags) > 0 {
+		parts = append(parts, strings.Join(cmd.Flags, " "))
+	}
+	summary := strings.Join(parts, " ")
+	// If the usage column is too wide, collapse flags to [flags]
+	if len(summary) > 35 && len(cmd.Flags) > 0 {
+		if cmd.Args != "" {
+			summary = cmd.Args + " [flags]"
+		} else {
+			summary = "[flags]"
+		}
+	}
+	return summary
+}
+
 func generateHelpText() string {
 	var b strings.Builder
 	b.WriteString("Usage: ait [--db <path>] <command> [options]\n\nCommands:\n")
 
 	for _, cmd := range commands {
-		if cmd.Usage != "" {
-			fmt.Fprintf(&b, "  %-10s %-35s %s\n", cmd.Name, cmd.Usage, cmd.Summary)
-		} else {
-			fmt.Fprintf(&b, "  %-10s %-35s %s\n", cmd.Name, "", cmd.Summary)
-		}
-		if cmd.UsageCont != "" {
-			fmt.Fprintf(&b, "  %-10s %s\n", "", cmd.UsageCont)
-		}
+		usage := usageSummary(cmd)
+		fmt.Fprintf(&b, "  %-10s %-35s %s\n", cmd.Name, usage, cmd.Summary)
 	}
 
 	b.WriteString(`
