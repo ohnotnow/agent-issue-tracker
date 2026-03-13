@@ -88,19 +88,20 @@ Show the current project configuration (prefix, schema version).
 			Summary: "Create a new issue",
 			Help: `Usage: ait create --title <t> [flags]
 
-Create a new issue (task or epic).
+Create a new issue (task, epic, or initiative).
 
 Flags:
   --title <text>         Issue title (required)
   --description <text>   Issue description
-  --type <task|epic>     Issue type (default: task)
-  --parent <id>          Parent issue ID (tasks only)
+  --type <task|epic|initiative>  Issue type (default: task)
+  --parent <id>          Parent issue ID (tasks and epics)
   --priority <P0-P4>     Priority level (default: P2)
 
 Examples:
   ait create --title "Add login page"
   ait create --title "Auth Epic" --type epic --priority P1
   ait create --title "OAuth flow" --parent PROJ-1
+  ait create --title "Auth Initiative" --type initiative --priority P0
 `,
 			Flags:   []string{"--title", "--description", "--type", "--parent", "--priority"},
 			NeedsDB: true,
@@ -138,7 +139,7 @@ Flags:
   --human              Human-readable table output
   --tree               Tree view showing parent/child hierarchy
   --status <status>    Filter by status (open, in_progress, closed, cancelled)
-  --type <type>        Filter by type (task, epic)
+  --type <type>        Filter by type (task, epic, initiative)
   --priority <P0-P4>   Filter by priority
   --parent <id>        Filter by parent issue
 
@@ -192,7 +193,7 @@ List issues that are unblocked (all dependencies closed).
 
 Flags:
   --long          Full JSON output
-  --type <type>   Filter by type (task, epic)
+  --type <type>   Filter by type (task, epic, initiative)
 
 Examples:
   ait ready

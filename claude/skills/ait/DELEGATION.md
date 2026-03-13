@@ -21,7 +21,7 @@ The common thread is that the receiver shouldn't couple to your tracker.
 
 ### 1. Export
 
-Generate a Markdown briefing for the epic (or task) you want to delegate:
+Generate a Markdown briefing for the initiative, epic, or task you want to delegate:
 
 ```bash
 ait export <id> --output briefing.md

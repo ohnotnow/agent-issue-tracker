@@ -28,17 +28,21 @@ func groupIssues(issues []Issue) groupedIssues {
 		}
 	}
 
-	// Sort roots: epics first, then tasks
+	// Sort roots: initiatives first, then epics, then tasks
+	initiatives := make([]Issue, 0)
 	epics := make([]Issue, 0)
 	tasks := make([]Issue, 0)
 	for _, r := range g.roots {
-		if r.Type == "epic" {
+		switch r.Type {
+		case "initiative":
+			initiatives = append(initiatives, r)
+		case "epic":
 			epics = append(epics, r)
-		} else {
+		default:
 			tasks = append(tasks, r)
 		}
 	}
-	g.roots = append(epics, tasks...)
+	g.roots = append(append(initiatives, epics...), tasks...)
 	return g
 }
 
@@ -65,7 +69,10 @@ func FormatHumanList(issues []Issue) string {
 		}
 
 		typeLabel := ""
-		if root.Type == "epic" {
+		switch root.Type {
+		case "initiative":
+			typeLabel = "init"
+		case "epic":
 			typeLabel = "epic"
 		}
 
@@ -197,7 +204,11 @@ func FormatMarkdownExport(root Issue, children []Issue, notesMap map[string][]No
 	})
 
 	if len(sorted) > 0 {
-		b.WriteString("\n## Tasks\n\n")
+		childLabel := "Tasks"
+		if root.Type == "initiative" {
+			childLabel = "Epics"
+		}
+		b.WriteString(fmt.Sprintf("\n## %s\n\n", childLabel))
 		for _, child := range sorted {
 			checkbox := statusCheckbox(child.Status)
 			b.WriteString(fmt.Sprintf("- %s **%s** (`%s`) — %s\n", checkbox, child.Title, child.ID, child.Priority))

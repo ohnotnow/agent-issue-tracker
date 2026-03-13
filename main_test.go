@@ -773,17 +773,164 @@ func TestCancelAndReopen(t *testing.T) {
 	})
 }
 
-func TestCreateEpicWithParent(t *testing.T) {
+func TestCreateEpicWithEpicParent(t *testing.T) {
 	testApp(t, func(ctx context.Context, a *ait.App) {
 		var epic ait.Issue
 		runJSONCommand(t, a, []string{"create", "--title", "Parent", "--type", "epic"}, &epic)
 
 		err := runExpectError(t, a, []string{"create", "--title", "Nested epic", "--type", "epic", "--parent", epic.ID})
 		if err == nil {
-			t.Fatal("expected validation error for epic with parent")
+			t.Fatal("expected validation error for epic with epic parent")
 		}
-		if !strings.Contains(err.Error(), "epics cannot have a parent") {
+		if !strings.Contains(err.Error(), "epics can only have an initiative as parent") {
 			t.Fatalf("unexpected error: %s", err.Error())
+		}
+	})
+}
+
+func TestCreateInitiative(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var init ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Auth Vision", "--type", "initiative", "--priority", "P0"}, &init)
+		if init.Type != "initiative" {
+			t.Fatalf("expected type initiative, got %s", init.Type)
+		}
+		if init.ParentID != nil {
+			t.Fatal("expected initiative to have no parent")
+		}
+		if init.Priority != "P0" {
+			t.Fatalf("expected P0, got %s", init.Priority)
+		}
+	})
+}
+
+func TestCreateInitiativeWithParent(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var epic ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Parent", "--type", "epic"}, &epic)
+
+		err := runExpectError(t, a, []string{"create", "--title", "Nested init", "--type", "initiative", "--parent", epic.ID})
+		if err == nil {
+			t.Fatal("expected validation error for initiative with parent")
+		}
+		if !strings.Contains(err.Error(), "initiatives cannot have a parent") {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+	})
+}
+
+func TestCreateEpicWithInitiativeParent(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var init ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Vision", "--type", "initiative"}, &init)
+
+		var epic ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Auth Epic", "--type", "epic", "--parent", init.ID}, &epic)
+		if epic.ParentID == nil || *epic.ParentID != init.ID {
+			t.Fatalf("expected epic parent to be %s, got %v", init.ID, epic.ParentID)
+		}
+		if !strings.HasPrefix(epic.ID, init.ID+".") {
+			t.Fatalf("expected epic ID to be hierarchical under %s, got %s", init.ID, epic.ID)
+		}
+	})
+}
+
+func TestCreateTaskWithInitiativeParent(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var init ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Vision", "--type", "initiative"}, &init)
+
+		err := runExpectError(t, a, []string{"create", "--title", "Bad task", "--parent", init.ID})
+		if err == nil {
+			t.Fatal("expected validation error for task with initiative parent")
+		}
+		if !strings.Contains(err.Error(), "tasks can only have an epic or task as parent") {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+	})
+}
+
+func TestThreeTierHierarchy(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var init ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Vision", "--type", "initiative"}, &init)
+		var epic ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Auth Epic", "--type", "epic", "--parent", init.ID}, &epic)
+		var task ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Login page", "--parent", epic.ID}, &task)
+
+		// Tree view should show all three levels
+		treeOut := captureStdout(t, func() {
+			if err := a.Run(ctx, []string{"list", "--tree", "--all"}); err != nil {
+				t.Fatalf("list --tree: %v", err)
+			}
+		})
+		if !strings.Contains(treeOut, init.ID) {
+			t.Fatalf("expected initiative %s in tree output:\n%s", init.ID, treeOut)
+		}
+		if !strings.Contains(treeOut, epic.ID) {
+			t.Fatalf("expected epic %s in tree output:\n%s", epic.ID, treeOut)
+		}
+		if !strings.Contains(treeOut, task.ID) {
+			t.Fatalf("expected task %s in tree output:\n%s", task.ID, treeOut)
+		}
+	})
+}
+
+func TestExportInitiative(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var init ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Vision", "--type", "initiative"}, &init)
+		var epic ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Auth Epic", "--type", "epic", "--parent", init.ID}, &epic)
+
+		mdOut := captureStdout(t, func() {
+			if err := a.Run(ctx, []string{"export", init.ID}); err != nil {
+				t.Fatalf("export: %v", err)
+			}
+		})
+		if !strings.Contains(mdOut, "## Epics") {
+			t.Fatalf("expected '## Epics' heading in initiative export, got:\n%s", mdOut)
+		}
+	})
+}
+
+func TestCascadeCloseInitiative(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var init ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Vision", "--type", "initiative"}, &init)
+		var epic ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Auth Epic", "--type", "epic", "--parent", init.ID}, &epic)
+		var task ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Login page", "--parent", epic.ID}, &task)
+
+		// Cascade close from initiative
+		runJSONCommand(t, a, []string{"close", init.ID, "--cascade"}, new(json.RawMessage))
+
+		// All three should be closed
+		for _, id := range []string{init.ID, epic.ID, task.ID} {
+			var shown ait.ShowResponse
+			runJSONCommand(t, a, []string{"show", id}, &shown)
+			if shown.Issue.Status != ait.StatusClosed {
+				t.Fatalf("expected %s to be closed, got %s", id, shown.Issue.Status)
+			}
+		}
+	})
+}
+
+func TestReadyFilterByInitiative(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var init ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Vision", "--type", "initiative"}, &init)
+		runJSONCommand(t, a, []string{"create", "--title", "Some task"}, new(ait.Issue))
+
+		var readyResult struct{ Issues []ait.IssueRef }
+		runJSONCommand(t, a, []string{"ready", "--type", "initiative"}, &readyResult)
+		if len(readyResult.Issues) != 1 {
+			t.Fatalf("expected 1 initiative in ready, got %d", len(readyResult.Issues))
+		}
+		if readyResult.Issues[0].ID != init.ID {
+			t.Fatalf("expected %s, got %s", init.ID, readyResult.Issues[0].ID)
 		}
 	})
 }

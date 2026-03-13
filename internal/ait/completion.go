@@ -60,7 +60,7 @@ func generateBashCompletion() string {
     local note_subcmds="add list"
     local completion_subcmds="bash zsh"
     local statuses="open in_progress closed cancelled"
-    local types="task epic"
+    local types="task epic initiative"
     local priorities="P0 P1 P2 P3 P4"
 
     # Commands that accept an issue ID as first positional arg
@@ -155,7 +155,7 @@ _ait() {
 %s    )
 
     local -a statuses=(open in_progress closed cancelled)
-    local -a types=(task epic)
+    local -a types=(task epic initiative)
     local -a priorities=(P0 P1 P2 P3 P4)
 
     _ait_issue_ids() {

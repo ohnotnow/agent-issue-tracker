@@ -89,6 +89,86 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version:     3,
+		description: "add initiative issue type",
+		apply: func(ctx context.Context, tx *sql.Tx) error {
+			// SQLite cannot ALTER CHECK constraints, so we rebuild the
+			// issues table. To avoid FK-reference rewriting problems
+			// during renames, we back up all three related tables, drop
+			// them, recreate with the updated schema, and restore data.
+			statements := []string{
+				// Back up existing data
+				`CREATE TABLE _issues_backup AS SELECT * FROM issues;`,
+				`CREATE TABLE _deps_backup AS SELECT * FROM issue_dependencies;`,
+				`CREATE TABLE _notes_backup AS SELECT * FROM issue_notes;`,
+
+				// Drop in dependency order
+				`DROP TABLE issue_notes;`,
+				`DROP TABLE issue_dependencies;`,
+				`DROP TABLE issues;`,
+
+				// Recreate issues with initiative in the CHECK constraint
+				`CREATE TABLE issues (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					legacy_id TEXT UNIQUE,
+					public_id TEXT UNIQUE,
+					type TEXT NOT NULL CHECK (type IN ('task', 'epic', 'initiative')),
+					title TEXT NOT NULL,
+					description TEXT NOT NULL DEFAULT '',
+					status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'closed', 'cancelled')),
+					parent_id INTEGER NULL,
+					priority TEXT NOT NULL DEFAULT 'P2' CHECK (priority IN ('P0', 'P1', 'P2', 'P3', 'P4')),
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					closed_at TEXT NULL,
+					claimed_by TEXT NULL,
+					claimed_at TEXT NULL,
+					FOREIGN KEY (parent_id) REFERENCES issues(id)
+				);`,
+				`INSERT INTO issues SELECT * FROM _issues_backup;`,
+
+				// Recreate dependent tables
+				`CREATE TABLE issue_dependencies (
+					blocked_id INTEGER NOT NULL,
+					blocker_id INTEGER NOT NULL,
+					created_at TEXT NOT NULL,
+					PRIMARY KEY (blocked_id, blocker_id),
+					FOREIGN KEY (blocked_id) REFERENCES issues(id) ON DELETE CASCADE,
+					FOREIGN KEY (blocker_id) REFERENCES issues(id) ON DELETE CASCADE
+				);`,
+				`INSERT INTO issue_dependencies SELECT * FROM _deps_backup;`,
+
+				`CREATE TABLE issue_notes (
+					id TEXT PRIMARY KEY,
+					issue_id INTEGER NOT NULL,
+					body TEXT NOT NULL,
+					created_at TEXT NOT NULL,
+					FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+				);`,
+				`INSERT INTO issue_notes SELECT * FROM _notes_backup;`,
+
+				// Clean up backups
+				`DROP TABLE _issues_backup;`,
+				`DROP TABLE _deps_backup;`,
+				`DROP TABLE _notes_backup;`,
+
+				// Recreate indexes
+				`CREATE UNIQUE INDEX idx_issues_public_id ON issues(public_id);`,
+				`CREATE UNIQUE INDEX idx_issues_legacy_id ON issues(legacy_id) WHERE legacy_id IS NOT NULL;`,
+				`CREATE INDEX idx_issues_status ON issues(status);`,
+				`CREATE INDEX idx_issues_parent_id ON issues(parent_id);`,
+				`CREATE INDEX idx_issue_dependencies_blocker_id ON issue_dependencies(blocker_id);`,
+				`CREATE INDEX idx_issue_notes_issue_id ON issue_notes(issue_id);`,
+			}
+			for _, stmt := range statements {
+				if _, err := tx.ExecContext(ctx, stmt); err != nil {
+					return fmt.Errorf("migration 3: %w", err)
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // currentSchemaVersion returns the version recorded in schema_version,

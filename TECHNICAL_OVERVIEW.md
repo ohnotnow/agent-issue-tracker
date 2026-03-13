@@ -1,6 +1,6 @@
 # Technical Overview
 
-Last updated: 2026-03-05
+Last updated: 2026-03-13
 
 ## What This Is
 
@@ -45,12 +45,12 @@ ProjectConfig (singleton)
   stores current public ID prefix
 
 Issue
-  parent_id -> Issue           hierarchical epic/task tree
+  parent_id -> Issue           hierarchical initiative/epic/task tree
   blocked by -> Issue          many-to-many via issue_dependencies
   has many -> Note             via issue_notes
 
 Issue
-  types: epic | task
+  types: initiative | epic | task
   statuses: open | in_progress | closed | cancelled
   priorities: P0 | P1 | P2 | P3 | P4
 ```
@@ -66,7 +66,7 @@ ProjectConfig -> prefix used to generate Issue.public_id
 
 - `issues.public_id`: user-facing stable ID such as `ait-abcde` or `ait-abcde.1`
 - `issues.legacy_id`: preserved only for old TEXT-ID databases migrated in place
-- `issues.type`: `task` or `epic`
+- `issues.type`: `initiative`, `epic`, or `task`
 - `issues.status`: `open`, `in_progress`, `closed`, `cancelled`
 - `issues.parent_id`: supports arbitrary depth hierarchy
 - `issues.priority`: lexical priority ordering works because values are `P0`..`P4`
@@ -121,7 +121,7 @@ Primary commands implemented in [internal/ait/app.go](/Users/billy/Documents/cod
 - `ready` includes only `open` and `in_progress` issues with no non-closed blockers.
 - Ready items are ordered by priority first, then creation time.
 - `list` hides `closed` and `cancelled` items unless `--all` or an explicit `--status` is provided.
-- Epics cannot have parents.
+- Initiatives cannot have parents; epics can only be children of initiatives (or standalone); tasks can only be children of epics or other tasks.
 - Reparenting is intentionally blocked once hierarchical IDs exist.
 - `dep add` prevents self-dependencies and transitive cycles.
 - `close --cascade` recursively closes a subtree but skips already terminal descendants.
@@ -135,6 +135,7 @@ Primary commands implemented in [internal/ait/app.go](/Users/billy/Documents/cod
 - Current numbered migrations:
   - `1`: baseline schema
   - `2`: add claim fields to `issues`
+  - `3`: add `initiative` issue type (table rebuild to update CHECK constraint)
 - The app also detects a pre-migration legacy schema where `issues.id` was TEXT and upgrades it in place to integer primary keys plus `legacy_id`/`public_id`.
 
 ## Authorization / Coordination Model

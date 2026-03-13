@@ -74,11 +74,32 @@ type DependencyTree struct {
 
 func ValidateIssueType(value string) error {
 	switch value {
-	case "task", "epic":
+	case "task", "epic", "initiative":
 		return nil
 	default:
-		return &CLIError{Code: "validation", Message: "type must be one of: task, epic", ExitCode: 65}
+		return &CLIError{Code: "validation", Message: "type must be one of: task, epic, initiative", ExitCode: 65}
 	}
+}
+
+// ValidateParentType checks that the child type is compatible with the parent type.
+// An empty parentType means no parent is being assigned, which is always valid.
+func ValidateParentType(childType, parentType string) error {
+	if parentType == "" {
+		return nil
+	}
+	switch childType {
+	case "initiative":
+		return &CLIError{Code: "validation", Message: "initiatives cannot have a parent", ExitCode: 65}
+	case "epic":
+		if parentType != "initiative" {
+			return &CLIError{Code: "validation", Message: "epics can only have an initiative as parent", ExitCode: 65}
+		}
+	case "task":
+		if parentType != "epic" && parentType != "task" {
+			return &CLIError{Code: "validation", Message: "tasks can only have an epic or task as parent", ExitCode: 65}
+		}
+	}
+	return nil
 }
 
 func ValidateStatus(value string) error {

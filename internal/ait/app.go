@@ -109,15 +109,15 @@ func (a *App) runCreate(ctx context.Context, args []string) error {
 	if err := ValidatePriority(*priority); err != nil {
 		return err
 	}
-	if *issueType == "epic" && strings.TrimSpace(*parentID) != "" {
-		return &CLIError{Code: "validation", Message: "epics cannot have a parent", ExitCode: 65}
-	}
-
 	var parent *string
 	var parentInternalID any
 	if strings.TrimSpace(*parentID) != "" {
 		parent = parentID
-		if err := a.validateParent(ctx, *parent); err != nil {
+		parentIssue, err := a.fetchIssue(ctx, *parent)
+		if err != nil {
+			return err
+		}
+		if err := ValidateParentType(*issueType, parentIssue.Type); err != nil {
 			return err
 		}
 		resolvedParentID, err := a.resolveIssueID(ctx, *parent)
@@ -463,8 +463,8 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 		}
 	}
 	if *parentID != "" {
-		if current.Type == "epic" {
-			return &CLIError{Code: "validation", Message: "epics cannot have a parent", ExitCode: 65}
+		if current.Type == "initiative" {
+			return &CLIError{Code: "validation", Message: "initiatives cannot have a parent", ExitCode: 65}
 		}
 		return &CLIError{Code: "validation", Message: "changing parent is not supported once hierarchical ids are enabled", ExitCode: 65}
 	}

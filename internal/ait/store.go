@@ -521,7 +521,7 @@ func migrateLegacySchema(ctx context.Context, db *sql.DB) error {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			legacy_id TEXT UNIQUE,
 			public_id TEXT UNIQUE,
-			type TEXT NOT NULL CHECK (type IN ('task', 'epic')),
+			type TEXT NOT NULL CHECK (type IN ('task', 'epic', 'initiative')),
 			title TEXT NOT NULL,
 			description TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'closed', 'cancelled')),

@@ -16,7 +16,7 @@ Schema changes are now managed through a forward-only migration system, so exist
 
 The tool is optimized for agent workflow first:
 
-- create epics and tasks
+- create initiatives, epics, and tasks
 - model dependencies
 - store progress notes
 - claim issues to coordinate between multiple agents
@@ -26,7 +26,23 @@ The tool is optimized for agent workflow first:
 
 Human-friendly output is intentionally secondary for now. JSON is the default interface.
 
-## What it is not 
+## Issue Types
+
+There are three issue types, forming a natural hierarchy:
+
+- **`initiative`** — the strategic "why". Captures the vision, goals, and key decisions behind a group of related epics. Useful as a reference point when an agent needs to make a judgement call during implementation. Initiatives are always top-level (no parent).
+- **`epic`** — a container for related tasks. Can be top-level or a child of an initiative.
+- **`task`** (default) — a unit of work. Always a child of an epic (or another task for subtasks).
+
+```bash
+ait create --title "Auth overhaul" --type initiative --priority P0
+ait create --title "OAuth Epic" --type epic --parent <initiative-id>
+ait create --title "Login page" --parent <epic-id>
+```
+
+The hierarchy is reflected in the ID structure: `proj-abc` (initiative) -> `proj-abc.1` (epic) -> `proj-abc.1.1` (task).
+
+## What it is not
 
 The tool is not a replacement for a real issue tracker.  The workflow is envisioned as 'developer has a plan/issues/feature - gets the coding agent to plan them out (or does it themselves), then the actual coding agent manages the sub-epics/issues for that work alone.
 
@@ -110,7 +126,7 @@ Pass `--long` to get the full issue record including `description`, `parent_id`,
 
 For human-friendly output, two display modes are available:
 
-- `--human` — compact tabular view with epics and children grouped, child IDs shown as short suffixes (`.1`, `.2`)
+- `--human` — compact tabular view with initiatives, epics, and children grouped, child IDs shown as short suffixes (`.1`, `.2`)
 - `--tree` — parent-child hierarchy using tree connectors (`├──`, `└──`), full IDs on every line
 
 These are mutually exclusive and can be combined with the usual filters (`--type`, `--status`, `--priority`).
@@ -138,10 +154,10 @@ If an issue is already claimed by another agent, `claim` returns a conflict erro
 
 ## Cascade Close
 
-By default, `close` only affects the specified issue. To close an epic and all of its descendants in one operation:
+By default, `close` only affects the specified issue. To close an initiative or epic and all of its descendants in one operation:
 
 ```bash
-ait close <epic-id> --cascade
+ait close <id> --cascade
 ```
 
 This recursively closes all open or in-progress children and grandchildren. Issues that are already closed or cancelled are skipped. The command returns the list of newly closed issues.
@@ -155,7 +171,7 @@ ait flush              # delete all terminal issues
 ait flush --dry-run    # preview what would be deleted
 ```
 
-Flush only removes **root-level** issues whose entire descendant tree is also closed or cancelled. If a closed epic still has open or in-progress children, it is skipped and reported in the `skipped` list. Notes and dependencies belonging to flushed issues are removed automatically via cascade delete.
+Flush only removes **root-level** issues whose entire descendant tree is also closed or cancelled. If a closed initiative or epic still has open or in-progress children, it is skipped and reported in the `skipped` list. Notes and dependencies belonging to flushed issues are removed automatically via cascade delete.
 
 ## Markdown Export and Delegation
 
@@ -166,7 +182,7 @@ ait export <id>                       # print Markdown to stdout
 ait export <id> --output briefing.md  # write to file
 ```
 
-For an epic, the output includes the title, ID, priority, description, a task checklist ordered by priority, dependencies, notes, and a summary with counts. The resulting file is also useful as a human-readable report of an epic's current state.
+For an epic or initiative, the output includes the title, ID, priority, description, a checklist of children ordered by priority, dependencies, notes, and a summary with counts. The resulting file is also useful as a human-readable report of current state.
 
 The delegation workflow is straightforward:
 
