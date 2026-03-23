@@ -11,7 +11,10 @@ skills:
 
 Convert approved plans into **consultant-ready** ait issues. The goal: a fresh agent with no prior context could read the epic + issue + README and start work immediately.
 
-**Critical note**:  Do not try and run multiple `ait` commands in a single Bash call.  The user interface we are using will stop and ask the user to approve the call every single time.  The user can only auto-approve individual Bash calls.  There is an open issue about this on the anthropic github repo - but for now you must only run one command at a time.
+**Critical note — one Bash call per response, no exceptions**:
+The Claude Code permission system can only auto-approve tool calls when there is exactly **one** tool call in a response. If you include two or more tool calls in the same response message (even if they are separate Bash blocks, not chained with `&&`), the user gets prompted for manual approval on every single one. With dozens of issues to create, this makes the process unusable.
+
+**Rule**: Each of your response messages must contain **at most one Bash tool call**. After that call completes, you may make the next one in your following response. Never batch, parallelise, or group multiple Bash calls together — even if they are independent. One call, wait for the result, then the next call in a new response.
 
 ## The Layered Context Model
 
