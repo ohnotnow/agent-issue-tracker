@@ -11,7 +11,7 @@ skills:
 
 Convert approved plans into **consultant-ready** ait issues. The goal: a fresh agent with no prior context could read the epic + issue + README and start work immediately.
 
-**CRITICAL**: You must exit plan mode before starting this agent - otherwise it will not be able to create ait issues.
+**Critical note**:  Do not try and run multiple `ait` commands in a single Bash call.  The user interface we are using will stop and ask the user to approve the call every single time.  The user can only auto-approve individual Bash calls.  There is an open issue about this on the anthropic github repo - but for now you must only run one command at a time.
 
 ## The Layered Context Model
 
