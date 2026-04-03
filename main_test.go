@@ -2439,3 +2439,97 @@ func TestLogSearchWithLong(t *testing.T) {
 		}
 	})
 }
+
+// --- Log purge tests ---
+
+func TestLogPurgeCompactKeepsEntries(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		// Create 3 flush entries.
+		for _, title := range []string{"First", "Second", "Third"} {
+			var task ait.Issue
+			runJSONCommand(t, a, []string{"create", "--title", title}, &task)
+			runJSONCommand[ait.Issue](t, a, []string{"close", task.ID}, nil)
+			runJSONCommand[ait.FlushResult](t, a, []string{"flush", "--summary", title + " summary"}, nil)
+		}
+
+		// Compact: keep last 1.
+		var result ait.PurgeResult
+		runJSONCommand(t, a, []string{"log", "purge", "--keep", "1"}, &result)
+
+		if result.Compact != true {
+			t.Fatal("expected compact=true")
+		}
+		if result.EntriesPurged != 0 {
+			t.Fatalf("expected 0 entries purged in compact mode, got %d", result.EntriesPurged)
+		}
+		if result.ItemsRemoved != 2 {
+			t.Fatalf("expected 2 items removed, got %d", result.ItemsRemoved)
+		}
+
+		// All 3 entries should still exist (summaries preserved).
+		var entries []ait.FlushHistoryEntrySummary
+		runJSONCommand(t, a, []string{"log"}, &entries)
+		if len(entries) != 3 {
+			t.Fatalf("expected 3 entries after compact, got %d", len(entries))
+		}
+
+		// The two oldest should have item_count 0.
+		// Entries are newest-first, so [2] and [1] are the oldest.
+		if entries[2].ItemCount != 0 {
+			t.Fatalf("expected oldest entry to have 0 items after compact, got %d", entries[2].ItemCount)
+		}
+		if entries[1].ItemCount != 0 {
+			t.Fatalf("expected second oldest entry to have 0 items after compact, got %d", entries[1].ItemCount)
+		}
+		// Most recent should still have its item.
+		if entries[0].ItemCount != 1 {
+			t.Fatalf("expected newest entry to have 1 item, got %d", entries[0].ItemCount)
+		}
+	})
+}
+
+func TestLogPurgeFullDeletesEntries(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		for _, title := range []string{"First", "Second", "Third"} {
+			var task ait.Issue
+			runJSONCommand(t, a, []string{"create", "--title", title}, &task)
+			runJSONCommand[ait.Issue](t, a, []string{"close", task.ID}, nil)
+			runJSONCommand[ait.FlushResult](t, a, []string{"flush"}, nil)
+		}
+
+		var result ait.PurgeResult
+		runJSONCommand(t, a, []string{"log", "purge", "--keep", "1", "--full"}, &result)
+
+		if result.Compact != false {
+			t.Fatal("expected compact=false for full purge")
+		}
+		if result.EntriesPurged != 2 {
+			t.Fatalf("expected 2 entries purged, got %d", result.EntriesPurged)
+		}
+
+		// Only 1 entry should remain.
+		var entries []ait.FlushHistoryEntrySummary
+		runJSONCommand(t, a, []string{"log"}, &entries)
+		if len(entries) != 1 {
+			t.Fatalf("expected 1 entry after full purge, got %d", len(entries))
+		}
+	})
+}
+
+func TestLogPurgeRequiresScope(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		err := runExpectError(t, a, []string{"log", "purge"})
+		if err == nil {
+			t.Fatal("expected error when no --keep or --before given")
+		}
+	})
+}
+
+func TestLogPurgeBeforeAndKeepMutuallyExclusive(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		err := runExpectError(t, a, []string{"log", "purge", "--keep", "5", "--before", "2026-01-01"})
+		if err == nil {
+			t.Fatal("expected error when both --keep and --before given")
+		}
+	})
+}

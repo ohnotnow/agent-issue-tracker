@@ -46,6 +46,21 @@ List all notes for an issue.
 Examples:
   ait note list PROJ-1
 `,
+		"log purge": `Usage: ait log purge <--keep <n> | --before <date>> [--full]
+
+Compact old flush history. By default, keeps summary rows but removes
+per-issue item records. Use --full to delete entries entirely.
+
+Flags:
+  --keep <n>       Keep the last n flush entries, purge the rest
+  --before <date>  Purge entries older than this date (RFC3339 or YYYY-MM-DD)
+  --full           Delete entries entirely (not just items)
+
+Examples:
+  ait log purge --keep 20
+  ait log purge --before 2026-01-01
+  ait log purge --keep 10 --full
+`,
 	}
 }
 
@@ -412,11 +427,15 @@ Examples:
 			Name:    "log",
 			Summary: "Show flush history",
 			Help: `Usage: ait log [--last <n>] [--since <date>] [--search <term>] [--long]
+       ait log purge <--keep <n> | --before <date>> [--full]
 
 Show the history of flushed issues. Entries are shown newest first.
 
 By default, shows a summary with root-level items only. Use --long for
 full output including all child items and close reasons.
+
+Subcommands:
+  purge              Compact or delete old history entries
 
 Flags:
   --last <n>         Show only the last n flush events
@@ -429,6 +448,7 @@ Examples:
   ait log --search "migration"
   ait log --search "auth" --long
   ait log --since 2026-04-01
+  ait log purge --keep 20
 `,
 			Flags:   []string{"--last", "--since", "--search", "--long"},
 			NeedsDB: true,

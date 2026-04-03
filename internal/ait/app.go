@@ -1180,6 +1180,15 @@ func (a *App) runFlush(ctx context.Context, args []string) error {
 }
 
 func (a *App) runLog(ctx context.Context, args []string) error {
+	// Check for subcommands before flag parsing.
+	if len(args) > 0 && args[0] == "purge" {
+		return a.runLogPurge(ctx, args[1:])
+	}
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		PrintCommandHelp("log")
+		return nil
+	}
+
 	fs := flag.NewFlagSet("log", flag.ContinueOnError)
 	last := fs.Int("last", 0, "")
 	since := fs.String("since", "", "")
@@ -1251,5 +1260,28 @@ func (a *App) runLog(ctx context.Context, args []string) error {
 		summaries = append(summaries, s)
 	}
 	return PrintJSON(summaries)
+}
+
+func (a *App) runLogPurge(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("log purge", flag.ContinueOnError)
+	before := fs.String("before", "", "")
+	keep := fs.Int("keep", 0, "")
+	full := fs.Bool("full", false, "")
+	fs.SetOutput(io.Discard)
+
+	if err := fs.Parse(args); err != nil {
+		if isHelpRequested(err) {
+			PrintCommandHelp("log purge")
+			return nil
+		}
+		return &CLIError{Code: "usage", Message: err.Error(), ExitCode: 64}
+	}
+
+	result, err := a.purgeFlushHistory(ctx, *before, *keep, *full)
+	if err != nil {
+		return err
+	}
+
+	return PrintJSON(result)
 }
 

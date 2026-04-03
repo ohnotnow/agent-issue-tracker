@@ -986,6 +986,73 @@ func (a *App) fetchFlushHistory(ctx context.Context, limit int, since string) ([
 	return entries, nil
 }
 
+// PurgeResult is the JSON response returned by log purge.
+type PurgeResult struct {
+	EntriesPurged int `json:"entries_purged"`
+	ItemsRemoved  int `json:"items_removed"`
+	Compact       bool `json:"compact"`
+}
+
+// purgeFlushHistory removes old flush history. In compact mode, only items
+// are removed (summaries are preserved). In full mode, entries and items
+// are both deleted. Exactly one of before/keep should be set.
+func (a *App) purgeFlushHistory(ctx context.Context, before string, keep int, full bool) (PurgeResult, error) {
+	// Build the WHERE clause to identify entries to purge.
+	var whereClause string
+	var params []any
+
+	if before != "" && keep > 0 {
+		return PurgeResult{}, &CLIError{Code: "validation", Message: "--before and --keep are mutually exclusive", ExitCode: 65}
+	}
+	if before == "" && keep <= 0 {
+		return PurgeResult{}, &CLIError{Code: "validation", Message: "one of --before or --keep is required", ExitCode: 65}
+	}
+
+	if before != "" {
+		whereClause = `WHERE flushed_at < ?`
+		params = append(params, before)
+	} else {
+		// Keep the last N entries, purge the rest.
+		whereClause = `WHERE id NOT IN (SELECT id FROM flush_history ORDER BY flushed_at DESC LIMIT ?)`
+		params = append(params, keep)
+	}
+
+	// Count what we're about to affect.
+	var entryCount int
+	err := a.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM flush_history `+whereClause, params...,
+	).Scan(&entryCount)
+	if err != nil {
+		return PurgeResult{}, err
+	}
+
+	var itemCount int
+	err = a.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM flush_history_items WHERE flush_id IN (SELECT id FROM flush_history `+whereClause+`)`, params...,
+	).Scan(&itemCount)
+	if err != nil {
+		return PurgeResult{}, err
+	}
+
+	if full {
+		// Full purge: delete entries (items cascade).
+		if _, err := a.db.ExecContext(ctx,
+			`DELETE FROM flush_history `+whereClause, params...,
+		); err != nil {
+			return PurgeResult{}, err
+		}
+		return PurgeResult{EntriesPurged: entryCount, ItemsRemoved: itemCount, Compact: false}, nil
+	}
+
+	// Compact: delete only items, keep entries.
+	if _, err := a.db.ExecContext(ctx,
+		`DELETE FROM flush_history_items WHERE flush_id IN (SELECT id FROM flush_history `+whereClause+`)`, params...,
+	); err != nil {
+		return PurgeResult{}, err
+	}
+	return PurgeResult{EntriesPurged: 0, ItemsRemoved: itemCount, Compact: true}, nil
+}
+
 // allDescendantsTerminal returns true if every descendant of the given
 // issue is closed or cancelled.
 func (a *App) allDescendantsTerminal(ctx context.Context, parentID int64) (bool, error) {
