@@ -65,7 +65,9 @@ It's not designed to handle cross-team shared issues, work, projects.  The inter
 - `claim`
 - `unclaim`
 - `ready` (`--type`, `--long`)
-- `flush` (`--dry-run`)
+- `flush` (`--dry-run`, `--summary`)
+- `log` (`--last`, `--since`, `--search`, `--long`)
+- `log purge` (`--keep`, `--before`, `--full`)
 - `dep add`
 - `dep remove`
 - `dep list`
@@ -194,6 +196,45 @@ ait flush --dry-run    # preview what would be deleted
 ```
 
 Flush only removes **root-level** issues whose entire descendant tree is also closed or cancelled. If a closed initiative or epic still has open or in-progress children, it is skipped and reported in the `skipped` list. Notes and dependencies belonging to flushed issues are removed automatically via cascade delete.
+
+### Flush Summary
+
+The `--summary` flag lets you attach an editorial note to the flush, giving future sessions a quick description of what was accomplished:
+
+```bash
+ait flush --summary "Fixed pg case-sensitivity in searches, added API docs"
+```
+
+## Flush History
+
+Before deleting, `flush` records every flushed issue into a history log stored in the same SQLite database. This gives agents a way to look back at what was done in previous sessions without keeping the issues themselves around.
+
+### Viewing History
+
+```bash
+ait log                           # summary view: date, summary, root items, item count
+ait log --long                    # full detail: all items with parent IDs and close reasons
+ait log --last 5                  # most recent 5 flush events
+ait log --since 2026-04-01        # flushes since a date
+ait log --search "migration"      # find items by title or close reason
+ait log --search "auth" --long    # search with full detail
+```
+
+By default, `log` returns a slim view: each flush entry shows its date, summary, total item count, and only root-level items (initiatives, standalone epics and tasks). This follows the same slim/long pattern as `list` and `ready`. Use `--long` to see all items including children and their close reasons.
+
+The `--search` flag filters items by title or close reason (case-insensitive). Flush entries with no matching items are excluded. This is useful when a user mentions past work and you need to find the relevant history.
+
+### Compacting History
+
+Over time the history log can grow large. The `log purge` subcommand compacts it:
+
+```bash
+ait log purge --keep 20           # compact all but the last 20 entries
+ait log purge --before 2026-01-01 # compact entries older than a date
+ait log purge --keep 10 --full    # fully delete old entries
+```
+
+By default, purge **compacts** — it removes the per-issue item records but keeps the summary rows (date, summary text). This preserves the timeline of what happened while reclaiming storage. Use `--full` to delete entries entirely.
 
 ## Markdown Export and Delegation
 

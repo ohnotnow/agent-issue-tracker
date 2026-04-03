@@ -87,7 +87,12 @@ ait note list <id>                   # List notes for an issue
 ```bash
 ait flush              # permanently delete all closed/cancelled issues
 ait flush --dry-run    # preview what would be deleted without changing anything
+ait flush --summary "Fixed pg compatibility, added API docs"  # with editorial note
 ```
+Flush records all flushed issues to a history log before deleting them.
+The `--summary` flag attaches a short editorial note to the history entry —
+useful for giving future sessions a quick description of what was accomplished.
+
 Flush removes root-level issues whose entire descendant tree is also closed or
 cancelled. Notes and dependencies are cascade-deleted automatically.
 
@@ -95,6 +100,30 @@ cancelled. Notes and dependencies are cascade-deleted automatically.
 closed epic has open or in-progress children — something that probably needs
 human attention. Flag this to the user and suggest they review the skipped
 issues before deciding what to do.
+
+### Flush History
+```bash
+ait log                           # summary: date, summary, root items, item count
+ait log --long                    # full detail: all items with close reasons
+ait log --last 3                  # most recent 3 flush events
+ait log --since 2026-04-01        # flushes since a date
+ait log --search "migration"      # find items by title or close reason
+ait log --search "auth" --long    # search with full detail
+ait log purge --keep 20           # compact: keep summaries, drop items for old entries
+ait log purge --keep 10 --full    # fully delete old entries
+ait log purge --before 2026-01-01 # compact entries older than a date
+```
+
+The default `log` output is slim: each flush entry shows its date, summary,
+total item count, and only root-level items. Use `--long` for all items
+including children and close reasons.
+
+Use `--search` when the user mentions past work vaguely ("we changed the
+migrations a while back") — it matches against item titles and close reasons.
+
+`log purge` defaults to **compact** mode: summary rows are kept, per-issue
+items are dropped. Use `--full` to delete entries entirely. Scope with
+`--keep <n>` or `--before <date>` (mutually exclusive).
 
 ### Claiming (Multi-Agent)
 ```bash
@@ -140,7 +169,7 @@ three-tier setup: `proj-abc` (initiative) -> `proj-abc.1` (epic) -> `proj-abc.1.
 
 ## Workflow Pattern
 
-1. **Start of session**: `ait ready` to see what is unblocked
+1. **Start of session**: `ait log --last 3` for recent context, then `ait ready` to see what is unblocked
 2. **Pick work**: `ait claim <id> <your-name>` to claim an issue
 3. **Check context**: `ait show <id>` for full details and notes. If the issue belongs to an initiative, read the initiative description to understand the strategic intent.
 4. **Mark in progress**: `ait update <id> --status in_progress`
@@ -189,7 +218,10 @@ export → delegate → reconcile workflow.
 - Use notes liberally — they survive session loss and conversation compaction.
 - Use `--cascade` on close to avoid closing children one by one.
 - Run `ait flush` periodically to keep the database lean — the tracker is for
-  ephemeral work, so there is no need to keep completed issues forever.
+  ephemeral work, so there is no need to keep completed issues forever. Use
+  `--summary` to leave a note for future sessions about what was accomplished.
+- Use `ait log --search` when the user references past work — it searches
+  titles and close reasons across all flush history.
 - `ait show <id>` returns children, blockers, and notes in one call — use it to
   get full context before starting work.
 - The database lives at `.ait/ait.db` in the git root. It is a plain SQLite file

@@ -1,6 +1,6 @@
 # Technical Overview
 
-Last updated: 2026-03-13
+Last updated: 2026-04-03
 
 ## What This Is
 
@@ -91,13 +91,13 @@ Primary commands implemented in [internal/ait/app.go](/Users/billy/Documents/cod
 - Coordination: `claim`, `unclaim`
 - Dependencies: `dep add`, `dep remove`, `dep list`, `dep tree`
 - Notes: `note add`, `note list`
-- Reporting/cleanup: `export`, `flush`, `version`
+- Reporting/cleanup: `export`, `flush`, `version`, `log`, `log purge`
 - Shell integration: `completion`
 
 ### Output Modes
 
-- Default `list`/`ready` output is slim JSON using `IssueRef`
-- `--long` returns full `Issue` records
+- Default `list`/`ready`/`log` output is slim JSON using `IssueRef` or `FlushHistoryEntrySummary`
+- `--long` returns full `Issue` or `FlushHistoryEntry` records
 - `list --human` prints grouped tabular output
 - `list --tree` prints ASCII hierarchy
 - `export` is the only command that emits Markdown instead of JSON
@@ -125,7 +125,10 @@ Primary commands implemented in [internal/ait/app.go](/Users/billy/Documents/cod
 - Reparenting is intentionally blocked once hierarchical IDs exist.
 - `dep add` prevents self-dependencies and transitive cycles.
 - `close --cascade` recursively closes a subtree but skips already terminal descendants.
+- `flush` records all flushed issues to `flush_history`/`flush_history_items` before deleting.
 - `flush` only deletes root-level terminal trees; mixed-status trees are reported in `skipped`.
+- `log` default output shows root-level items only with item counts; `--long` shows all items.
+- `log purge` defaults to compact mode (keeps summary rows, drops items); `--full` deletes entirely.
 - Notes and dependencies rely on `ON DELETE CASCADE`.
 
 ## Schema And Migration Notes
@@ -136,6 +139,7 @@ Primary commands implemented in [internal/ait/app.go](/Users/billy/Documents/cod
   - `1`: baseline schema
   - `2`: add claim fields to `issues`
   - `3`: add `initiative` issue type (table rebuild to update CHECK constraint)
+  - `4`: add `flush_history` and `flush_history_items` tables for flush history
 - The app also detects a pre-migration legacy schema where `issues.id` was TEXT and upgrades it in place to integer primary keys plus `legacy_id`/`public_id`.
 
 ## Authorization / Coordination Model
