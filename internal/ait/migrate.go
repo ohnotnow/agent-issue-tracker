@@ -169,6 +169,37 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version:     4,
+		description: "add flush history tables",
+		apply: func(ctx context.Context, tx *sql.Tx) error {
+			statements := []string{
+				`CREATE TABLE flush_history (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					summary TEXT NOT NULL DEFAULT '',
+					flushed_at TEXT NOT NULL
+				);`,
+				`CREATE TABLE flush_history_items (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					flush_id INTEGER NOT NULL,
+					public_id TEXT NOT NULL,
+					type TEXT NOT NULL,
+					title TEXT NOT NULL,
+					priority TEXT NOT NULL,
+					parent_public_id TEXT,
+					close_reason TEXT NOT NULL DEFAULT '',
+					FOREIGN KEY (flush_id) REFERENCES flush_history(id) ON DELETE CASCADE
+				);`,
+				`CREATE INDEX idx_flush_history_items_flush_id ON flush_history_items(flush_id);`,
+			}
+			for _, stmt := range statements {
+				if _, err := tx.ExecContext(ctx, stmt); err != nil {
+					return fmt.Errorf("migration 4: %w", err)
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // currentSchemaVersion returns the version recorded in schema_version,

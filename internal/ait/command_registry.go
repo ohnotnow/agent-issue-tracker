@@ -388,21 +388,46 @@ Examples:
 		{
 			Name:    "flush",
 			Summary: "Purge closed/cancelled issues",
-			Help: `Usage: ait flush [--dry-run]
+			Help: `Usage: ait flush [--dry-run] [--summary <text>]
 
 Purge closed/cancelled root issues whose entire subtree is also terminal.
+Before deleting, records the flushed issues in the history log.
 
 Flags:
-  --dry-run   Show what would be flushed without deleting
+  --dry-run          Show what would be flushed without deleting
+  --summary <text>   Editorial note for the history entry
 
 Examples:
   ait flush --dry-run
   ait flush
+  ait flush --summary "Finished auth overhaul"
 `,
-			Flags:   []string{"--dry-run"},
+			Flags:   []string{"--dry-run", "--summary"},
 			NeedsDB: true,
 			Run: func(a *App, ctx context.Context, args []string) error {
 				return a.runFlush(ctx, args)
+			},
+		},
+		{
+			Name:    "log",
+			Summary: "Show flush history",
+			Help: `Usage: ait log [--last <n>] [--since <date>]
+
+Show the history of flushed issues. Entries are shown newest first.
+
+Flags:
+  --last <n>       Show only the last n flush events
+  --since <date>   Show flushes since this date (RFC3339 or YYYY-MM-DD)
+
+Examples:
+  ait log
+  ait log --last 5
+  ait log --since 2026-04-01
+`,
+			Flags:   []string{"--last", "--since"},
+			NeedsDB: true,
+			Run: func(a *App, ctx context.Context, args []string) error {
+				return a.runLog(ctx, args)
 			},
 		},
 		{

@@ -1160,6 +1160,7 @@ func (a *App) runExport(ctx context.Context, args []string) error {
 func (a *App) runFlush(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("flush", flag.ContinueOnError)
 	dryRun := fs.Bool("dry-run", false, "")
+	summary := fs.String("summary", "", "")
 	fs.SetOutput(io.Discard)
 
 	if err := fs.Parse(args); err != nil {
@@ -1170,11 +1171,33 @@ func (a *App) runFlush(ctx context.Context, args []string) error {
 		return &CLIError{Code: "usage", Message: err.Error(), ExitCode: 64}
 	}
 
-	result, err := a.flushTerminalIssues(ctx, *dryRun)
+	result, err := a.flushTerminalIssues(ctx, *dryRun, *summary)
 	if err != nil {
 		return err
 	}
 
 	return PrintJSON(result)
+}
+
+func (a *App) runLog(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("log", flag.ContinueOnError)
+	last := fs.Int("last", 0, "")
+	since := fs.String("since", "", "")
+	fs.SetOutput(io.Discard)
+
+	if err := fs.Parse(args); err != nil {
+		if isHelpRequested(err) {
+			PrintCommandHelp("log")
+			return nil
+		}
+		return &CLIError{Code: "usage", Message: err.Error(), ExitCode: 64}
+	}
+
+	entries, err := a.fetchFlushHistory(ctx, *last, *since)
+	if err != nil {
+		return err
+	}
+
+	return PrintJSON(entries)
 }
 

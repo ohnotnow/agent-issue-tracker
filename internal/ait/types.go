@@ -73,6 +73,24 @@ type DependencyTree struct {
 	Cycles   []string         `json:"cycles,omitempty"`
 }
 
+// FlushHistoryItem represents a single issue that was flushed.
+type FlushHistoryItem struct {
+	PublicID       string  `json:"id"`
+	Type           string  `json:"type"`
+	Title          string  `json:"title"`
+	Priority       string  `json:"priority"`
+	ParentPublicID *string `json:"parent_id"`
+	CloseReason    string  `json:"close_reason,omitempty"`
+}
+
+// FlushHistoryEntry represents a single flush event with its items.
+type FlushHistoryEntry struct {
+	ID        int64              `json:"id"`
+	Summary   string             `json:"summary,omitempty"`
+	FlushedAt string             `json:"flushed_at"`
+	Items     []FlushHistoryItem `json:"items"`
+}
+
 func ValidateIssueType(value string) error {
 	switch value {
 	case "task", "epic", "initiative":

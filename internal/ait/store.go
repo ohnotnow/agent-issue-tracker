@@ -726,10 +726,17 @@ type FlushResult struct {
 	Skipped []IssueRef `json:"skipped"`
 }
 
+type flushableTree struct {
+	rootInternalID int64
+	rootRef        IssueRef
+	descendants    []Issue
+}
+
 // flushTerminalIssues deletes all root-level closed/cancelled issues
 // whose entire descendant tree is also closed/cancelled. Children are
 // removed via ON DELETE CASCADE. Issues with live descendants are skipped.
-func (a *App) flushTerminalIssues(ctx context.Context, dryRun bool) (FlushResult, error) {
+// Before deleting, it records the flushed issues in flush_history.
+func (a *App) flushTerminalIssues(ctx context.Context, dryRun bool, summary string) (FlushResult, error) {
 	// Find closed/cancelled root issues (no parent).
 	roots, err := a.queryIssueRefs(ctx,
 		fmt.Sprintf(
@@ -748,6 +755,8 @@ func (a *App) flushTerminalIssues(ctx context.Context, dryRun bool) (FlushResult
 		Skipped: make([]IssueRef, 0),
 	}
 
+	var trees []flushableTree
+
 	for _, root := range roots {
 		internalID, err := a.resolveIssueID(ctx, root.ID)
 		if err != nil {
@@ -763,11 +772,11 @@ func (a *App) flushTerminalIssues(ctx context.Context, dryRun bool) (FlushResult
 			continue
 		}
 
-		// Collect this root and all its descendants for reporting.
 		descendants, err := a.fetchAllDescendants(ctx, internalID)
 		if err != nil {
 			return FlushResult{}, err
 		}
+
 		result.Flushed = append(result.Flushed, root)
 		for _, d := range descendants {
 			result.Flushed = append(result.Flushed, IssueRef{
@@ -775,25 +784,206 @@ func (a *App) flushTerminalIssues(ctx context.Context, dryRun bool) (FlushResult
 			})
 		}
 
-		if !dryRun {
-			// Delete descendants bottom-up, then the root.
-			// ON DELETE CASCADE handles notes and dependencies.
-			for i := len(descendants) - 1; i >= 0; i-- {
-				descID, err := a.resolveIssueID(ctx, descendants[i].ID)
-				if err != nil {
-					return FlushResult{}, err
-				}
-				if _, err := a.db.ExecContext(ctx, `DELETE FROM issues WHERE id = ?`, descID); err != nil {
-					return FlushResult{}, err
-				}
-			}
-			if _, err := a.db.ExecContext(ctx, `DELETE FROM issues WHERE id = ?`, internalID); err != nil {
+		trees = append(trees, flushableTree{
+			rootInternalID: internalID,
+			rootRef:        root,
+			descendants:    descendants,
+		})
+	}
+
+	if dryRun || len(trees) == 0 {
+		return result, nil
+	}
+
+	// Record history before deleting.
+	if err := a.recordFlushHistory(ctx, summary, trees); err != nil {
+		return FlushResult{}, err
+	}
+
+	// Delete trees bottom-up.
+	for _, tree := range trees {
+		for i := len(tree.descendants) - 1; i >= 0; i-- {
+			descID, err := a.resolveIssueID(ctx, tree.descendants[i].ID)
+			if err != nil {
 				return FlushResult{}, err
 			}
+			if _, err := a.db.ExecContext(ctx, `DELETE FROM issues WHERE id = ?`, descID); err != nil {
+				return FlushResult{}, err
+			}
+		}
+		if _, err := a.db.ExecContext(ctx, `DELETE FROM issues WHERE id = ?`, tree.rootInternalID); err != nil {
+			return FlushResult{}, err
 		}
 	}
 
 	return result, nil
+}
+
+// closeReason extracts the close reason from an issue's notes, if any.
+// Close reasons are stored as notes with a "Closed: " prefix.
+func (a *App) closeReason(ctx context.Context, issueID int64) (string, error) {
+	var body sql.NullString
+	err := a.db.QueryRowContext(ctx,
+		`SELECT body FROM issue_notes
+		 WHERE issue_id = ? AND body LIKE 'Closed: %'
+		 ORDER BY created_at DESC LIMIT 1`,
+		issueID,
+	).Scan(&body)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	if body.Valid {
+		return strings.TrimPrefix(body.String, "Closed: "), nil
+	}
+	return "", nil
+}
+
+// historyItem holds pre-collected data for a flush history record.
+type historyItem struct {
+	publicID       string
+	issueType      string
+	title          string
+	priority       string
+	parentPublicID *string
+	closeReason    string
+}
+
+// recordFlushHistory collects close reasons then inserts a flush_history
+// row and its items in a single transaction. Close reasons are collected
+// first to avoid holding a transaction while querying (which deadlocks
+// on single-connection in-memory databases).
+func (a *App) recordFlushHistory(ctx context.Context, summary string, trees []flushableTree) error {
+	// Collect all items and their close reasons before starting the transaction.
+	var items []historyItem
+	for _, tree := range trees {
+		reason, err := a.closeReason(ctx, tree.rootInternalID)
+		if err != nil {
+			return err
+		}
+		items = append(items, historyItem{
+			publicID:    tree.rootRef.ID,
+			issueType:   tree.rootRef.Type,
+			title:       tree.rootRef.Title,
+			priority:    tree.rootRef.Priority,
+			closeReason: reason,
+		})
+		for _, d := range tree.descendants {
+			descID, err := a.resolveIssueID(ctx, d.ID)
+			if err != nil {
+				return err
+			}
+			reason, err := a.closeReason(ctx, descID)
+			if err != nil {
+				return err
+			}
+			items = append(items, historyItem{
+				publicID:       d.ID,
+				issueType:      d.Type,
+				title:          d.Title,
+				priority:       d.Priority,
+				parentPublicID: d.ParentID,
+				closeReason:    reason,
+			})
+		}
+	}
+
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.ExecContext(ctx,
+		`INSERT INTO flush_history (summary, flushed_at) VALUES (?, ?)`,
+		summary, NowUTC(),
+	)
+	if err != nil {
+		return err
+	}
+	flushID, err := res.LastInsertId()
+	if err != nil {
+		return err
+	}
+
+	for _, item := range items {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO flush_history_items (flush_id, public_id, type, title, priority, parent_public_id, close_reason)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			flushID, item.publicID, item.issueType, item.title, item.priority, item.parentPublicID, item.closeReason,
+		); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// fetchFlushHistory returns flush history entries, newest first.
+func (a *App) fetchFlushHistory(ctx context.Context, limit int, since string) ([]FlushHistoryEntry, error) {
+	query := `SELECT id, summary, flushed_at FROM flush_history`
+	var params []any
+
+	if since != "" {
+		query += ` WHERE flushed_at >= ?`
+		params = append(params, since)
+	}
+	query += ` ORDER BY flushed_at DESC`
+
+	if limit > 0 {
+		query += ` LIMIT ?`
+		params = append(params, limit)
+	}
+
+	rows, err := a.db.QueryContext(ctx, query, params...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []FlushHistoryEntry
+	for rows.Next() {
+		var e FlushHistoryEntry
+		if err := rows.Scan(&e.ID, &e.Summary, &e.FlushedAt); err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Fetch items for each entry.
+	for i := range entries {
+		items, err := a.db.QueryContext(ctx,
+			`SELECT public_id, type, title, priority, parent_public_id, close_reason
+			 FROM flush_history_items WHERE flush_id = ? ORDER BY id ASC`,
+			entries[i].ID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		entries[i].Items = make([]FlushHistoryItem, 0)
+		for items.Next() {
+			var item FlushHistoryItem
+			var parentID sql.NullString
+			if err := items.Scan(&item.PublicID, &item.Type, &item.Title, &item.Priority, &parentID, &item.CloseReason); err != nil {
+				items.Close()
+				return nil, err
+			}
+			if parentID.Valid {
+				item.ParentPublicID = &parentID.String
+			}
+			entries[i].Items = append(entries[i].Items, item)
+		}
+		if err := items.Close(); err != nil {
+			return nil, err
+		}
+	}
+
+	if entries == nil {
+		entries = make([]FlushHistoryEntry, 0)
+	}
+	return entries, nil
 }
 
 // allDescendantsTerminal returns true if every descendant of the given
