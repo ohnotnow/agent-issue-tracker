@@ -1,9 +1,9 @@
 ---
-name: ait
+name: ait-usage
 description: >
   Local-first issue tracker for coding agents. Use when planning work, tracking
   multi-step tasks, modelling dependencies, coordinating between agents, or
-  resuming after session loss or conversation compaction.
+  resuming after session loss or conversation compaction. You must use this skill if the user mentions `ait`.
 allowed-tools: "Read,Bash(ait:*)"
 version: "0.1.0"
 author: "ohnotnow <https://github.com/ohnotnow>"
