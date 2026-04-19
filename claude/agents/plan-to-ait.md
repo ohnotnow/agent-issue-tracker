@@ -50,10 +50,39 @@ You take a plan (from `~/.claude/plans/`) and translate it into actionable ait i
 
 ## What You Do
 
-### 1. Find and read the plan
+### 1. Find and read the plan, and calibrate to the project
 - Check `~/.claude/plans/` for the most recent plan, or use the one specified
 - Parse the plan structure: phases, steps, dependencies, context
-- **Also read**: README.md, TECHNICAL_OVERVIEW.md (if exists), and any docs mentioned in the plan
+- **Also read**: README.md, CLAUDE.md, TECHNICAL_OVERVIEW.md (if exists), and any docs mentioned in the plan
+- **Pick a testing mode** (see below). This shapes how you design issues and what acceptance criteria mean.
+
+#### Testing mode
+
+**Strict TDD** — Laravel projects, or any project whose CLAUDE.md mentions TDD / red-green / one-at-a-time.
+- Acceptance criteria are **failing tests, written first**. Each criterion = one behaviour.
+- Add this block verbatim to every implementation issue:
+
+  > **TDD — tests come first.** For each acceptance criterion:
+  > 1. Write the failing test.
+  > 2. Run it. Watch it fail for the right reason.
+  > 3. Write the minimum code to make it pass.
+  > 4. Refactor.
+  > 5. *Then* move to the next criterion.
+  >
+  > Do **not** scaffold the implementation first and retrofit tests — that is not TDD. Do **not** write multiple tests upfront. One test, one behaviour, one step at a time.
+
+- If an issue has many criteria, split it so the red-green rhythm stays natural.
+
+**Standard testing** — Python, Go, or other serious projects without an explicit TDD policy.
+- Acceptance criteria double as tests, written alongside implementation.
+- No one-at-a-time requirement; the implementing agent can batch sensibly.
+
+**No tests** — Throwaway JS/TS toys, exploration scripts, personal fun projects.
+- Signals: minimal `package.json`, no tests directory, no CI config, no CLAUDE.md TDD language.
+- Acceptance criteria are plain observable outcomes ("Button changes colour on click"), not tests.
+- Drop TDD language from issues entirely. The user will verify manually.
+
+**If signals are ambiguous, ask once** before creating issues — don't silently guess. Mention the chosen mode in your Agent Report so the user can redirect.
 
 ### 2. Check for existing parent initiative or epic
 - If the user specifies a parent, read it with `ait show <id>`
@@ -221,15 +250,17 @@ This section is critical - it ensures Claude understands this is a completed rep
 - P2: Core features (main implementation)
 - P3: Polish and non-critical enhancements
 
-### Testing belongs inside each issue, not in a separate issue
-The implementing agent follows TDD — tests are written first, then implementation.
-Never create standalone "write tests" or "update tests" issues. Each implementation
-issue's acceptance criteria ARE the tests. The implementing agent writes a failing
-test, makes it pass, then moves to the next criterion.
+### Testing belongs inside each issue (when testing applies)
 
+How tests fit depends on the mode you picked in step 1:
+
+- **Strict TDD**: each acceptance criterion = one failing test = one behaviour. **Tests are written first, before any implementation code exists.** The implementing agent writes the failing test, runs it, watches it fail, then writes the minimum code to pass. Refactor, then the next criterion. Do not let the agent scaffold the implementation first and retrofit tests — this is the most common TDD failure mode and must be called out explicitly in the issue.
+- **Standard**: criteria double as assertions, written alongside implementation. Multiple criteria per issue is fine.
+- **No tests**: criteria are plain observable outcomes, not tests. The user verifies manually.
+
+In all modes: **never create standalone "write tests" or "update tests" issues**.
 If an issue changes behaviour, its acceptance criteria should reflect the new
-behaviour. The agent will write tests to match. Do not create a follow-up issue
-to "fix up the tests afterwards" — that invites retrofitting.
+behaviour. No follow-up "fix up the tests afterwards" issue — that invites retrofitting.
 
 ### Phase Tracker Issues
 Create a tracker issue for each phase (e.g., "Phase 2: Service layer"). These:
