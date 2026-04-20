@@ -7,11 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-04-20
+
 ### Added
 - `--note <text>` flag on `close` — the clearer name for what was previously `--reason`. Attaches a closing note to the issue before closing it.
+- `ait-recap` Claude skill — generates a friendly markdown summary of recent `ait` activity for the current project or across a directory of projects. Useful as an aide-mémoire before a status update.
 
 ### Changed
-- `--reason <text>` on `close` is now documented as an alias for `--note`. Existing usage continues to work unchanged.
+- `--reason <text>` on `close` is now documented as an alias for `--note`. Existing scripts, agents and skills continue to work unchanged.
+- `plan-to-ait` Claude agent reworked around a TDD-oriented flow.
+
+### Fixed
+- zsh shell completion for `close` now offers `--note` and `--reason` (previously only `--cascade` was completed).
+
+## [1.4.0] - 2026-04-12
+
+### Added
+- `--human` flag on `create` — opens `$EDITOR` (falling back to `vi`) with a git-commit-style template so the title and description can be authored interactively. Useful when writing out a longer description is easier than passing it on the command line.
 
 ## [1.3.0] - 2026-04-03
 
@@ -93,7 +105,9 @@ First stable release. Core feature set:
 - Forward-only schema migration system
 - Custom database path via `--db`
 
-[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.4.0...v1.5.0
+[1.4.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.2.2...v1.3.0
 [1.2.2]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.2.0...v1.2.1
