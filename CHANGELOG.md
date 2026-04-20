@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `--note <text>` flag on `close` — the clearer name for what was previously `--reason`. Attaches a closing note to the issue before closing it.
+
+### Changed
+- `--reason <text>` on `close` is now documented as an alias for `--note`. Existing usage continues to work unchanged.
+
 ## [1.3.0] - 2026-04-03
 
 ### Added

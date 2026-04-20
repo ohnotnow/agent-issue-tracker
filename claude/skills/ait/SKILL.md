@@ -62,7 +62,7 @@ ait update <id> --priority P0          # Change priority
 ```bash
 ait close <id>                # Close a single issue
 ait close <id> --cascade      # Close an epic and all its descendants
-ait close <id> --reason "Done — merged in PR #42"  # Add a note then close
+ait close <id> --note "Done — merged in PR #42"    # Add a closing note then close (--reason is an alias)
 ait cancel <id>               # Cancel an issue
 ait reopen <id>               # Reopen a closed or cancelled issue
 ```

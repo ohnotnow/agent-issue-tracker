@@ -244,7 +244,10 @@ _ait() {
             ;;
         close)
             if [[ "${words[CURRENT]}" == -* ]]; then
-                _arguments '--cascade[Close entire subtree]'
+                _arguments \
+                    '--cascade[Close entire subtree]' \
+                    '--note[Add a closing note]:note:' \
+                    '--reason[Alias for --note]:note:'
             else
                 _ait_issue_ids
             fi

@@ -2225,6 +2225,27 @@ func TestFlushRecordsCloseReason(t *testing.T) {
 	})
 }
 
+func TestCloseWithNoteFlag(t *testing.T) {
+	// --note is the canonical spelling; --reason remains as an alias.
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var task ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Migration bug"}, &task)
+		runJSONCommand[ait.Issue](t, a, []string{"close", task.ID, "--note", "Fixed ordering"}, nil)
+
+		runJSONCommand[ait.FlushResult](t, a, []string{"flush"}, nil)
+
+		var entries []ait.FlushHistoryEntry
+		runJSONCommand(t, a, []string{"log", "--long"}, &entries)
+
+		if len(entries) != 1 {
+			t.Fatalf("expected 1 log entry, got %d", len(entries))
+		}
+		if entries[0].Items[0].CloseReason != "Fixed ordering" {
+			t.Fatalf("expected close reason %q, got %q", "Fixed ordering", entries[0].Items[0].CloseReason)
+		}
+	})
+}
+
 func TestFlushRecordsHierarchy(t *testing.T) {
 	testApp(t, func(ctx context.Context, a *ait.App) {
 		var epic ait.Issue

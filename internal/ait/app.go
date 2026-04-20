@@ -660,10 +660,11 @@ func (a *App) runUnclaim(ctx context.Context, args []string) error {
 }
 
 func (a *App) runClose(ctx context.Context, args []string) error {
-	// Extract --cascade and --reason from anywhere in the args since
+	// Extract --cascade, --note and --reason from anywhere in the args since
 	// flag.Parse stops at the first non-flag argument and the ID is positional.
+	// --reason is kept as an alias for --note for backwards compatibility.
 	cascade := false
-	var reason string
+	var note string
 	var filtered []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -673,23 +674,25 @@ func (a *App) runClose(ctx context.Context, args []string) error {
 		}
 		if arg == "--cascade" {
 			cascade = true
-		} else if arg == "--reason" && i+1 < len(args) {
-			reason = args[i+1]
+		} else if (arg == "--note" || arg == "--reason") && i+1 < len(args) {
+			note = args[i+1]
 			i++
+		} else if strings.HasPrefix(arg, "--note=") {
+			note = strings.TrimPrefix(arg, "--note=")
 		} else if strings.HasPrefix(arg, "--reason=") {
-			reason = strings.TrimPrefix(arg, "--reason=")
+			note = strings.TrimPrefix(arg, "--reason=")
 		} else {
 			filtered = append(filtered, arg)
 		}
 	}
 
 	if len(filtered) != 1 {
-		return &CLIError{Code: "usage", Message: "usage: ait close <id> [--cascade] [--reason <text>]", ExitCode: 64}
+		return &CLIError{Code: "usage", Message: "usage: ait close <id> [--cascade] [--note <text>]", ExitCode: 64}
 	}
 
-	// If --reason was given, add a note before closing.
-	if strings.TrimSpace(reason) != "" {
-		if err := a.runNoteAdd(ctx, []string{filtered[0], "Closed: " + reason}); err != nil {
+	// If --note (or the --reason alias) was given, add a note before closing.
+	if strings.TrimSpace(note) != "" {
+		if err := a.runNoteAdd(ctx, []string{filtered[0], "Closed: " + note}); err != nil {
 			return err
 		}
 	}

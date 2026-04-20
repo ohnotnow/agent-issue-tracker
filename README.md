@@ -59,7 +59,7 @@ It's not designed to handle cross-team shared issues, work, projects.  The inter
 - `status`
 - `search`
 - `update` (`--title`, `--description`, `--status`, `--priority`)
-- `close` (`--cascade`, `--reason`)
+- `close` (`--cascade`, `--note`)
 - `reopen`
 - `cancel`
 - `claim`
@@ -166,15 +166,17 @@ ait update <id> --description @updated-spec.txt
 
 If the value starts with `@`, the remainder is treated as a file path and the contents are used as the description. Without the `@` prefix, the value is used as a literal string as before.
 
-## Close with Reason
+## Close with a Note
 
-The `close` command accepts an optional `--reason` flag that adds a note before closing, leaving a breadcrumb for why something was closed:
+The `close` command accepts an optional `--note` flag that attaches a closing note to the issue before closing it, leaving a breadcrumb for why something was closed:
 
 ```bash
-ait close <id> --reason "Superseded by new approach"
+ait close <id> --note "Superseded by new approach"
 ```
 
 This is equivalent to running `ait note add <id> "Closed: ..."` followed by `ait close <id>`, but in a single command. It can be combined with `--cascade`.
+
+`--reason` is accepted as an alias for `--note` for backwards compatibility.
 
 ## Cascade Close
 

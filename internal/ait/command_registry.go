@@ -253,21 +253,22 @@ Examples:
 			Name:    "close",
 			Summary: "Close an issue (or subtree)",
 			Args:    "<id>",
-			Help: `Usage: ait close <id> [--cascade] [--reason <text>]
+			Help: `Usage: ait close <id> [--cascade] [--note <text>]
 
 Close an issue. With --cascade, close the entire subtree.
-With --reason, a note is added before closing.
+With --note, a closing note is added before closing.
 
 Flags:
-  --cascade        Also close all descendant issues
-  --reason <text>  Add a note with the reason before closing
+  --cascade       Also close all descendant issues
+  --note <text>   Add a closing note before closing the issue
+  --reason <text> Alias for --note (kept for backwards compatibility)
 
 Examples:
   ait close PROJ-1
   ait close PROJ-1 --cascade
-  ait close PROJ-1 --reason "Superseded by new approach"
+  ait close PROJ-1 --note "Superseded by new approach"
 `,
-			Flags:   []string{"--cascade", "--reason"},
+			Flags:   []string{"--cascade", "--note", "--reason"},
 			NeedsDB: true,
 			Run: func(a *App, ctx context.Context, args []string) error {
 				return a.runClose(ctx, args)
