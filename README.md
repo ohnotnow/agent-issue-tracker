@@ -59,7 +59,7 @@ It's not designed to handle cross-team shared issues, work, projects.  The inter
 - `status`
 - `search`
 - `update` (`--title`, `--description`, `--status`, `--priority`)
-- `close` (`--cascade`, `--note`)
+- `close` (`--cascade`, `--note`, `--reason` — alias for `--note`)
 - `reopen`
 - `cancel`
 - `claim`
