@@ -123,9 +123,13 @@ ait search "auth"      # matches "Auth Flow", "AUTH_TOKEN", etc.
 
 ## Output Modes
 
-By default, `list` and `ready` return a slim view with only the fields an agent typically needs: `id`, `title`, `status`, `type`, and `priority`. This keeps token usage low and makes it easier to reason about results quickly.
+By default, queries (`list`, `ready`) and mutations (`create`, `update`, `close`, `cancel`, `reopen`, `claim`, `unclaim`) return a slim view with only the fields an agent typically needs: `id`, `title`, `status`, `type`, and `priority`. This keeps token usage low when chaining commands or running them in batches.
 
 Pass `--long` to get the full issue record including `description`, `parent_id`, `claimed_by`, timestamps, and `closed_at`.
+
+The relation mutations `dep add`, `dep remove`, and `note add` return a slim ack (`{ok: true, ...ids}`) by default. Pass `--long` to get the full blocker list (`dep add`/`dep remove`) or the full `Note` record (`note add`).
+
+`list` also includes a `hidden_count` field in its JSON response when the default filter is active, telling you how many closed/cancelled issues are being filtered out — handy when an empty-looking response would otherwise be confusing. The field is omitted when `--all` or an explicit `--status` is passed.
 
 For human-friendly output, two display modes are available:
 
@@ -135,13 +139,16 @@ For human-friendly output, two display modes are available:
 These are mutually exclusive and can be combined with the usual filters (`--type`, `--status`, `--priority`).
 
 ```bash
-ait list                  # slim JSON (5 fields per issue)
+ait list                  # slim JSON (5 fields per issue) + hidden_count
 ait list --long           # full JSON record
+ait list --all            # include closed/cancelled, no hidden_count
 ait list --human          # compact tabular view
 ait list --tree           # tree hierarchy view
 ait list --human --priority P1  # filtered tabular view
 ait ready --type task     # slim, tasks only (excludes epics)
 ait ready --long          # full record, all types
+ait create --title X      # slim ref back
+ait create --title X --long  # full Issue back
 ```
 
 ## Issue Claiming

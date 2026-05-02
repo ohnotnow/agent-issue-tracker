@@ -59,6 +59,19 @@ type IssueRef struct {
 	Priority string `json:"priority"`
 }
 
+// NewIssueRef projects a full Issue into the slim IssueRef shape returned by
+// default from mutating commands (create, update, close, claim, etc.). Use
+// --long on those commands to get the full Issue back instead.
+func NewIssueRef(issue Issue) IssueRef {
+	return IssueRef{
+		ID:       issue.ID,
+		Title:    issue.Title,
+		Status:   issue.Status,
+		Type:     issue.Type,
+		Priority: issue.Priority,
+	}
+}
+
 type ShowResponse struct {
 	Issue    Issue      `json:"issue"`
 	Children []Issue    `json:"children"`

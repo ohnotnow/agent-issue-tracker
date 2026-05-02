@@ -245,7 +245,7 @@ func TestStatusTransitions(t *testing.T) {
 		}
 
 		var closed ait.Issue
-		runJSONCommand(t, a, []string{"close", created.ID}, &closed)
+		runJSONCommand(t, a, []string{"close", created.ID, "--long"}, &closed)
 		if closed.Status != ait.StatusClosed {
 			t.Fatalf("expected closed, got %s", closed.Status)
 		}
@@ -254,7 +254,7 @@ func TestStatusTransitions(t *testing.T) {
 		}
 
 		var reopened ait.Issue
-		runJSONCommand(t, a, []string{"reopen", created.ID}, &reopened)
+		runJSONCommand(t, a, []string{"reopen", created.ID, "--long"}, &reopened)
 		if reopened.Status != ait.StatusOpen {
 			t.Fatalf("expected reopened status open, got %s", reopened.Status)
 		}
@@ -436,11 +436,15 @@ func TestListReturnsIssueRefsByDefault(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
-		var rawResult map[string][]map[string]any
+		var rawResult map[string]any
 		if err := json.Unmarshal([]byte(raw), &rawResult); err != nil {
 			t.Fatal(err)
 		}
-		issue := rawResult["issues"][0]
+		issues, ok := rawResult["issues"].([]any)
+		if !ok {
+			t.Fatalf("expected issues to be an array, got %T", rawResult["issues"])
+		}
+		issue := issues[0].(map[string]any)
 		if _, ok := issue["description"]; ok {
 			t.Fatal("default list should not include description field")
 		}
@@ -506,6 +510,299 @@ func TestReadyLongReturnsFullIssues(t *testing.T) {
 	})
 }
 
+// --- Slim ref / slim ack output for mutating commands ---
+
+func TestCreateReturnsIssueRefByDefault(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		raw := captureStdout(t, func() {
+			if err := a.Run(ctx, []string{"create", "--title", "New", "--description", "Body"}); err != nil {
+				t.Fatal(err)
+			}
+		})
+		var fields map[string]any
+		if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := fields["description"]; ok {
+			t.Fatal("default create should not include description")
+		}
+		if _, ok := fields["created_at"]; ok {
+			t.Fatal("default create should not include created_at")
+		}
+		if _, ok := fields["id"]; !ok {
+			t.Fatal("default create should include id")
+		}
+	})
+}
+
+func TestCreateLongReturnsFullIssue(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var created ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "New", "--description", "Body", "--long"}, &created)
+		if created.Description != "Body" {
+			t.Fatalf("expected description in --long output, got %q", created.Description)
+		}
+		if created.CreatedAt == "" {
+			t.Fatal("expected created_at in --long output")
+		}
+	})
+}
+
+func TestUpdateReturnsIssueRefByDefault(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var created ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Original", "--long"}, &created)
+
+		raw := captureStdout(t, func() {
+			if err := a.Run(ctx, []string{"update", created.ID, "--title", "Renamed"}); err != nil {
+				t.Fatal(err)
+			}
+		})
+		var fields map[string]any
+		if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := fields["description"]; ok {
+			t.Fatal("default update should not include description")
+		}
+		if fields["title"] != "Renamed" {
+			t.Fatalf("expected title=Renamed, got %v", fields["title"])
+		}
+	})
+}
+
+func TestCascadeCloseReturnsRefsByDefault(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var epic ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Epic", "--type", "epic", "--long"}, &epic)
+		runJSONCommand[ait.Issue](t, a, []string{"create", "--title", "Child", "--parent", epic.ID}, nil)
+
+		raw := captureStdout(t, func() {
+			if err := a.Run(ctx, []string{"close", epic.ID, "--cascade"}); err != nil {
+				t.Fatal(err)
+			}
+		})
+		var result map[string]any
+		if err := json.Unmarshal([]byte(raw), &result); err != nil {
+			t.Fatal(err)
+		}
+		closed, ok := result["closed"].([]any)
+		if !ok {
+			t.Fatalf("expected closed to be an array, got %T", result["closed"])
+		}
+		if len(closed) != 2 {
+			t.Fatalf("expected 2 closed entries, got %d", len(closed))
+		}
+		first := closed[0].(map[string]any)
+		if _, ok := first["description"]; ok {
+			t.Fatal("default cascade close should return slim refs (no description)")
+		}
+	})
+}
+
+func TestCascadeCloseLongReturnsFullIssues(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var epic ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Epic", "--type", "epic", "--description", "Epic body", "--long"}, &epic)
+		runJSONCommand[ait.Issue](t, a, []string{"create", "--title", "Child", "--parent", epic.ID, "--description", "Child body"}, nil)
+
+		var result struct {
+			Closed []ait.Issue `json:"closed"`
+		}
+		runJSONCommand(t, a, []string{"close", epic.ID, "--cascade", "--long"}, &result)
+		if len(result.Closed) != 2 {
+			t.Fatalf("expected 2 closed, got %d", len(result.Closed))
+		}
+		if result.Closed[0].Description == "" {
+			t.Fatal("expected description in --long cascade close output")
+		}
+		if result.Closed[0].ClosedAt == nil {
+			t.Fatal("expected closed_at in --long cascade close output")
+		}
+	})
+}
+
+func TestClaimLongIncludesClaimFields(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var created ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Claimable", "--long"}, &created)
+
+		var claimed ait.Issue
+		runJSONCommand(t, a, []string{"claim", created.ID, "agent-x", "--long"}, &claimed)
+		if claimed.ClaimedBy == nil || *claimed.ClaimedBy != "agent-x" {
+			t.Fatalf("expected claimed_by=agent-x, got %v", claimed.ClaimedBy)
+		}
+	})
+}
+
+func TestClaimReturnsIssueRefByDefault(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var created ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Claimable", "--long"}, &created)
+
+		raw := captureStdout(t, func() {
+			if err := a.Run(ctx, []string{"claim", created.ID, "agent-x"}); err != nil {
+				t.Fatal(err)
+			}
+		})
+		var fields map[string]any
+		if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := fields["claimed_by"]; ok {
+			t.Fatal("default claim should not include claimed_by (use --long)")
+		}
+		if _, ok := fields["id"]; !ok {
+			t.Fatal("default claim should include id")
+		}
+	})
+}
+
+func TestDepAddReturnsSlimAckByDefault(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var a1, a2 ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "A", "--long"}, &a1)
+		runJSONCommand(t, a, []string{"create", "--title", "B", "--long"}, &a2)
+
+		var ack struct {
+			OK        bool   `json:"ok"`
+			BlockedID string `json:"blocked_id"`
+			BlockerID string `json:"blocker_id"`
+		}
+		runJSONCommand(t, a, []string{"dep", "add", a1.ID, a2.ID}, &ack)
+		if !ack.OK {
+			t.Fatal("expected ok=true in slim ack")
+		}
+		if ack.BlockedID != a1.ID || ack.BlockerID != a2.ID {
+			t.Fatalf("ack ids wrong: blocked=%s blocker=%s", ack.BlockedID, ack.BlockerID)
+		}
+	})
+}
+
+func TestDepAddLongReturnsBlockerList(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var a1, a2 ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "A", "--long"}, &a1)
+		runJSONCommand(t, a, []string{"create", "--title", "B", "--long"}, &a2)
+
+		var depList struct {
+			Blockers []ait.IssueRef `json:"blockers"`
+		}
+		runJSONCommand(t, a, []string{"dep", "add", a1.ID, a2.ID, "--long"}, &depList)
+		if len(depList.Blockers) != 1 {
+			t.Fatalf("expected 1 blocker in --long output, got %d", len(depList.Blockers))
+		}
+	})
+}
+
+func TestNoteAddReturnsSlimAckByDefault(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var created ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Notable", "--long"}, &created)
+
+		var ack struct {
+			OK      bool   `json:"ok"`
+			IssueID string `json:"issue_id"`
+			NoteID  string `json:"note_id"`
+		}
+		runJSONCommand(t, a, []string{"note", "add", created.ID, "Investigated"}, &ack)
+		if !ack.OK {
+			t.Fatal("expected ok=true in slim ack")
+		}
+		if ack.IssueID != created.ID {
+			t.Fatalf("ack issue id wrong: %s", ack.IssueID)
+		}
+		if ack.NoteID == "" {
+			t.Fatal("ack should include note_id")
+		}
+	})
+}
+
+func TestNoteAddLongReturnsFullNote(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var created ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Notable", "--long"}, &created)
+
+		var note ait.Note
+		runJSONCommand(t, a, []string{"note", "add", created.ID, "Investigated", "--long"}, &note)
+		if note.Body != "Investigated" {
+			t.Fatalf("expected note body, got %q", note.Body)
+		}
+		if note.CreatedAt == "" {
+			t.Fatal("expected created_at on --long note add")
+		}
+	})
+}
+
+// --- list hidden_count ---
+
+func TestListIncludesHiddenCountByDefault(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var open ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Open", "--long"}, &open)
+		var toClose ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Closing", "--long"}, &toClose)
+		runJSONCommand[map[string]any](t, a, []string{"close", toClose.ID}, nil)
+		var toCancel ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Cancelling", "--long"}, &toCancel)
+		runJSONCommand[map[string]any](t, a, []string{"cancel", toCancel.ID}, nil)
+
+		var result struct {
+			Issues      []ait.IssueRef `json:"issues"`
+			HiddenCount int            `json:"hidden_count"`
+		}
+		runJSONCommand(t, a, []string{"list"}, &result)
+		if len(result.Issues) != 1 {
+			t.Fatalf("expected 1 visible issue, got %d", len(result.Issues))
+		}
+		if result.HiddenCount != 2 {
+			t.Fatalf("expected hidden_count=2 (1 closed + 1 cancelled), got %d", result.HiddenCount)
+		}
+	})
+}
+
+func TestListAllOmitsHiddenCount(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var iss ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "X", "--long"}, &iss)
+		runJSONCommand[map[string]any](t, a, []string{"close", iss.ID}, nil)
+
+		raw := captureStdout(t, func() {
+			if err := a.Run(ctx, []string{"list", "--all"}); err != nil {
+				t.Fatal(err)
+			}
+		})
+		var fields map[string]any
+		if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := fields["hidden_count"]; ok {
+			t.Fatal("list --all should not include hidden_count (nothing is hidden)")
+		}
+	})
+}
+
+func TestListExplicitStatusOmitsHiddenCount(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var iss ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "X", "--long"}, &iss)
+		runJSONCommand[map[string]any](t, a, []string{"close", iss.ID}, nil)
+
+		raw := captureStdout(t, func() {
+			if err := a.Run(ctx, []string{"list", "--status", "closed"}); err != nil {
+				t.Fatal(err)
+			}
+		})
+		var fields map[string]any
+		if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := fields["hidden_count"]; ok {
+			t.Fatal("list --status <x> should not include hidden_count (the user picked the filter)")
+		}
+	})
+}
+
 // --- Step 2: Type filter ---
 
 func TestReadyFilterByType(t *testing.T) {
@@ -549,7 +846,7 @@ func TestDepAddAndList(t *testing.T) {
 			Blockers []ait.IssueRef `json:"blockers"`
 			Blocks   []ait.IssueRef `json:"blocks"`
 		}
-		runJSONCommand(t, a, []string{"dep", "add", a1.ID, a2.ID}, &depList)
+		runJSONCommand(t, a, []string{"dep", "add", a1.ID, a2.ID, "--long"}, &depList)
 
 		if len(depList.Blockers) != 1 {
 			t.Fatalf("expected 1 blocker, got %d", len(depList.Blockers))
@@ -571,7 +868,7 @@ func TestDepRemove(t *testing.T) {
 		var depList struct {
 			Blockers []ait.IssueRef `json:"blockers"`
 		}
-		runJSONCommand(t, a, []string{"dep", "remove", a1.ID, a2.ID}, &depList)
+		runJSONCommand(t, a, []string{"dep", "remove", a1.ID, a2.ID, "--long"}, &depList)
 
 		if len(depList.Blockers) != 0 {
 			t.Fatalf("expected 0 blockers after remove, got %d", len(depList.Blockers))
@@ -825,7 +1122,7 @@ func TestCreateEpicWithInitiativeParent(t *testing.T) {
 		runJSONCommand(t, a, []string{"create", "--title", "Vision", "--type", "initiative"}, &init)
 
 		var epic ait.Issue
-		runJSONCommand(t, a, []string{"create", "--title", "Auth Epic", "--type", "epic", "--parent", init.ID}, &epic)
+		runJSONCommand(t, a, []string{"create", "--title", "Auth Epic", "--type", "epic", "--parent", init.ID, "--long"}, &epic)
 		if epic.ParentID == nil || *epic.ParentID != init.ID {
 			t.Fatalf("expected epic parent to be %s, got %v", init.ID, epic.ParentID)
 		}
@@ -1587,7 +1884,7 @@ func TestClaimAndUnclaim(t *testing.T) {
 		runJSONCommand(t, a, []string{"create", "--title", "Claimable task"}, &created)
 
 		var claimed ait.Issue
-		runJSONCommand(t, a, []string{"claim", created.ID, "agent-1"}, &claimed)
+		runJSONCommand(t, a, []string{"claim", created.ID, "agent-1", "--long"}, &claimed)
 
 		if claimed.ClaimedBy == nil || *claimed.ClaimedBy != "agent-1" {
 			t.Fatalf("expected claimed_by=agent-1, got %v", claimed.ClaimedBy)
@@ -1597,7 +1894,7 @@ func TestClaimAndUnclaim(t *testing.T) {
 		}
 
 		var unclaimed ait.Issue
-		runJSONCommand(t, a, []string{"unclaim", created.ID}, &unclaimed)
+		runJSONCommand(t, a, []string{"unclaim", created.ID, "--long"}, &unclaimed)
 
 		if unclaimed.ClaimedBy != nil {
 			t.Fatalf("expected claimed_by=nil after unclaim, got %v", unclaimed.ClaimedBy)
@@ -2047,7 +2344,7 @@ func TestUpdateDescription(t *testing.T) {
 		runJSONCommand(t, a, []string{"create", "--title", "Test issue", "--description", "Original"}, &created)
 
 		var updated ait.Issue
-		runJSONCommand(t, a, []string{"update", created.ID, "--description", "Updated description"}, &updated)
+		runJSONCommand(t, a, []string{"update", created.ID, "--description", "Updated description", "--long"}, &updated)
 
 		if updated.Description != "Updated description" {
 			t.Fatalf("expected description %q, got %q", "Updated description", updated.Description)

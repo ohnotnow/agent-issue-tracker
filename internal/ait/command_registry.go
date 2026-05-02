@@ -4,16 +4,29 @@ import "context"
 
 func registerSubcommandHelp() map[string]string {
 	return map[string]string{
-		"dep add": `Usage: ait dep add <blocked-id> <blocker-id>
+		"dep add": `Usage: ait dep add <blocked-id> <blocker-id> [--long]
 
 Add a dependency: <blocked-id> is blocked by <blocker-id>.
 
+By default, returns a slim ack confirming the link. Use --long to get the
+full blocker list back (equivalent to running 'ait dep list <blocked-id>').
+
+Flags:
+  --long   Return the full blocker list instead of a slim ack
+
 Examples:
   ait dep add PROJ-2 PROJ-1
+  ait dep add PROJ-2 PROJ-1 --long
 `,
-		"dep remove": `Usage: ait dep remove <blocked-id> <blocker-id>
+		"dep remove": `Usage: ait dep remove <blocked-id> <blocker-id> [--long]
 
 Remove a dependency between two issues.
+
+By default, returns a slim ack confirming the removal. Use --long to get
+the resulting blocker list back.
+
+Flags:
+  --long   Return the full blocker list instead of a slim ack
 
 Examples:
   ait dep remove PROJ-2 PROJ-1
@@ -32,12 +45,19 @@ Show the full dependency tree for an issue.
 Examples:
   ait dep tree PROJ-2
 `,
-		"note add": `Usage: ait note add <id> <body>
+		"note add": `Usage: ait note add <id> <body> [--long]
 
 Add a note to an issue.
 
+By default, returns a slim ack with the new note id. Use --long to get
+the full Note record back (id, issue_id, body, created_at).
+
+Flags:
+  --long   Return the full Note record instead of a slim ack
+
 Examples:
   ait note add PROJ-1 "Completed the first pass"
+  ait note add PROJ-1 "Investigated root cause" --long
 `,
 		"note list": `Usage: ait note list <id>
 
@@ -106,6 +126,9 @@ Show the current project configuration (prefix, schema version).
 
 Create a new issue (task, epic, or initiative).
 
+By default, returns a slim ref (id, title, type, status, priority).
+Use --long to get the full Issue record back, including description.
+
 Flags:
   --title <text>         Issue title (required unless --human)
   --description <text>   Issue description (use @file to read from a file)
@@ -113,6 +136,7 @@ Flags:
   --parent <id>          Parent issue ID (tasks and epics)
   --priority <P0-P4>     Priority level (default: P2)
   --human                Open $EDITOR for title and description (like git commit)
+  --long                 Return the full Issue record instead of a slim ref
 
 Examples:
   ait create --title "Add login page"
@@ -122,7 +146,7 @@ Examples:
   ait create --title "Feature" --description @spec.md
   ait create --human --type epic --priority P1
 `,
-			Flags:   []string{"--title", "--description", "--type", "--parent", "--priority", "--human"},
+			Flags:   []string{"--title", "--description", "--type", "--parent", "--priority", "--human", "--long"},
 			NeedsDB: true,
 			Run: func(a *App, ctx context.Context, args []string) error {
 				return a.runCreate(ctx, args)
@@ -151,6 +175,11 @@ Examples:
 			Help: `Usage: ait list [flags]
 
 List issues with optional filters and output formats.
+
+By default, closed and cancelled issues are excluded — use --all to include
+them, or --status to filter by a specific status. The default JSON response
+includes a hidden_count field telling you how many issues are excluded by
+the default filter, so an empty-looking response is never a surprise.
 
 Flags:
   --all                Include closed and cancelled issues
@@ -210,6 +239,9 @@ Show a summary of issue counts by status, plus the number of ready issues.
 
 List issues that are unblocked (all dependencies closed).
 
+By default, returns slim refs — concise enough to confirm the queue at a
+glance. Use --long when you want the full issue body, dependencies, etc.
+
 Flags:
   --long          Full JSON output
   --type <type>   Filter by type (task, epic, initiative)
@@ -233,17 +265,20 @@ Examples:
 
 Update fields on an existing issue.
 
+By default, returns a slim ref. Use --long to get the full Issue record back.
+
 Flags:
   --title <text>         New title
   --description <text>   New description (use @file to read from a file)
   --status <status>      New status (open, in_progress, closed, cancelled)
   --priority <P0-P4>     New priority
+  --long                 Return the full Issue record instead of a slim ref
 
 Examples:
   ait update PROJ-1 --title "Renamed issue"
   ait update PROJ-1 --status in_progress --priority P0
 `,
-			Flags:   []string{"--title", "--description", "--status", "--priority", "--parent"},
+			Flags:   []string{"--title", "--description", "--status", "--priority", "--parent", "--long"},
 			NeedsDB: true,
 			Run: func(a *App, ctx context.Context, args []string) error {
 				return a.runUpdate(ctx, args)
@@ -253,22 +288,26 @@ Examples:
 			Name:    "close",
 			Summary: "Close an issue (or subtree)",
 			Args:    "<id>",
-			Help: `Usage: ait close <id> [--cascade] [--note <text>]
+			Help: `Usage: ait close <id> [--cascade] [--note <text>] [--long]
 
 Close an issue. With --cascade, close the entire subtree.
 With --note, a closing note is added before closing.
+
+By default, returns a slim ref (or {closed: [refs]} with --cascade). Use
+--long to get the full Issue record(s) back instead.
 
 Flags:
   --cascade       Also close all descendant issues
   --note <text>   Add a closing note before closing the issue
   --reason <text> Alias for --note (kept for backwards compatibility)
+  --long          Return the full Issue record(s) instead of a slim ref
 
 Examples:
   ait close PROJ-1
   ait close PROJ-1 --cascade
   ait close PROJ-1 --note "Superseded by new approach"
 `,
-			Flags:   []string{"--cascade", "--note", "--reason"},
+			Flags:   []string{"--cascade", "--note", "--reason", "--long"},
 			NeedsDB: true,
 			Run: func(a *App, ctx context.Context, args []string) error {
 				return a.runClose(ctx, args)
@@ -278,13 +317,19 @@ Examples:
 			Name:    "reopen",
 			Summary: "Reopen a closed/cancelled issue",
 			Args:    "<id>",
-			Help: `Usage: ait reopen <id>
+			Help: `Usage: ait reopen <id> [--long]
 
 Reopen a closed or cancelled issue (sets status back to open).
+
+By default, returns a slim ref. Use --long for the full Issue record.
+
+Flags:
+  --long   Return the full Issue record instead of a slim ref
 
 Examples:
   ait reopen PROJ-1
 `,
+			Flags:   []string{"--long"},
 			NeedsDB: true,
 			Run: func(a *App, ctx context.Context, args []string) error {
 				return a.runReopen(ctx, args)
@@ -294,13 +339,19 @@ Examples:
 			Name:    "cancel",
 			Summary: "Cancel an issue",
 			Args:    "<id>",
-			Help: `Usage: ait cancel <id>
+			Help: `Usage: ait cancel <id> [--long]
 
 Cancel an issue.
+
+By default, returns a slim ref. Use --long for the full Issue record.
+
+Flags:
+  --long   Return the full Issue record instead of a slim ref
 
 Examples:
   ait cancel PROJ-1
 `,
+			Flags:   []string{"--long"},
 			NeedsDB: true,
 			Run: func(a *App, ctx context.Context, args []string) error {
 				return a.runStatusChange(ctx, args, StatusCancelled)
@@ -310,13 +361,20 @@ Examples:
 			Name:    "claim",
 			Summary: "Claim an issue for an agent",
 			Args:    "<id> <agent-name>",
-			Help: `Usage: ait claim <id> <agent-name>
+			Help: `Usage: ait claim <id> <agent-name> [--long]
 
 Claim an issue for an agent. Fails if already claimed.
+
+By default, returns a slim ref. Use --long for the full Issue record
+(which includes claimed_by and claimed_at).
+
+Flags:
+  --long   Return the full Issue record instead of a slim ref
 
 Examples:
   ait claim PROJ-1 builder-agent
 `,
+			Flags:   []string{"--long"},
 			NeedsDB: true,
 			Run: func(a *App, ctx context.Context, args []string) error {
 				return a.runClaim(ctx, args)
@@ -326,13 +384,19 @@ Examples:
 			Name:    "unclaim",
 			Summary: "Release a claim",
 			Args:    "<id>",
-			Help: `Usage: ait unclaim <id>
+			Help: `Usage: ait unclaim <id> [--long]
 
 Release a claim on an issue.
+
+By default, returns a slim ref. Use --long for the full Issue record.
+
+Flags:
+  --long   Return the full Issue record instead of a slim ref
 
 Examples:
   ait unclaim PROJ-1
 `,
+			Flags:   []string{"--long"},
 			NeedsDB: true,
 			Run: func(a *App, ctx context.Context, args []string) error {
 				return a.runUnclaim(ctx, args)

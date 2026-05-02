@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Breaking:** mutating commands now return slim output by default, dropping the verbose full-record echo that wasted context in batch operations. Pass `--long` on any of these commands to get the full record back.
+  - `create`, `update`, `close` (single), `cancel`, `reopen`, `claim`, `unclaim` now return a slim issue ref (`{id, title, status, type, priority}`) by default. `--long` returns the full `Issue`.
+  - `close --cascade` returns `{closed: [refs]}` by default. `close --cascade --long` returns `{closed: [Issues]}` with full records.
+  - `dep add` and `dep remove` now return a slim ack (`{ok, blocked_id, blocker_id}`) by default. `--long` returns the full blocker list (the previous behaviour, equivalent to `dep list`).
+  - `note add` returns a slim ack (`{ok, issue_id, note_id}`) by default. `--long` returns the full `Note` record.
+- `list` now includes a `hidden_count` field in the JSON response when the default filter is active (no `--all`, no explicit `--status`). It tells you how many closed/cancelled issues are being filtered out so an empty-looking response is never a surprise. Omitted when `--all` or `--status` is passed.
+
+### Added
+- Help text for `list` and `ready` now calls out the default filter and the slim-vs-`--long` distinction respectively, addressing user feedback that both behaviours can catch new callers off-guard.
+
 ## [1.5.0] - 2026-04-20
 
 ### Added

@@ -91,6 +91,7 @@ func (a *App) runCreate(ctx context.Context, args []string) error {
 	parentID := fs.String("parent", "", "")
 	priority := fs.String("priority", "P2", "")
 	human := fs.Bool("human", false, "")
+	long := fs.Bool("long", false, "")
 	fs.SetOutput(io.Discard)
 
 	if err := fs.Parse(args); err != nil {
@@ -208,7 +209,10 @@ func (a *App) runCreate(ctx context.Context, args []string) error {
 		return err
 	}
 
-	return PrintJSON(created)
+	if *long {
+		return PrintJSON(created)
+	}
+	return PrintJSON(NewIssueRef(created))
 }
 
 func (a *App) runShow(ctx context.Context, args []string) error {
@@ -326,6 +330,13 @@ func (a *App) runList(ctx context.Context, args []string) error {
 		where = " WHERE " + strings.Join(clauses, " AND ")
 	}
 
+	// hidden_count is only meaningful when the default filter is active —
+	// when the caller has not passed --all and has not asked for an explicit
+	// --status. It tells the caller "there are N issues you are not seeing
+	// behind --all", which avoids the empty-looking response trap where a
+	// project full of closed issues looks empty at first glance.
+	defaultFilterActive := !*includeAll && *status == ""
+
 	if *human || *tree {
 		query := fmt.Sprintf(
 			`SELECT %s FROM issues i LEFT JOIN issues parent ON parent.id = i.parent_id%s ORDER BY i.created_at ASC`,
@@ -343,6 +354,15 @@ func (a *App) runList(ctx context.Context, args []string) error {
 		return nil
 	}
 
+	hiddenCount := 0
+	if defaultFilterActive {
+		count, err := a.countHiddenIssues(ctx, *parentID, *issueType, *priority)
+		if err != nil {
+			return err
+		}
+		hiddenCount = count
+	}
+
 	if *long {
 		query := fmt.Sprintf(
 			`SELECT %s FROM issues i LEFT JOIN issues parent ON parent.id = i.parent_id%s ORDER BY i.created_at ASC`,
@@ -352,7 +372,11 @@ func (a *App) runList(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		return PrintJSON(map[string]any{"issues": items})
+		response := map[string]any{"issues": items}
+		if defaultFilterActive {
+			response["hidden_count"] = hiddenCount
+		}
+		return PrintJSON(response)
 	}
 
 	query := fmt.Sprintf(
@@ -363,7 +387,44 @@ func (a *App) runList(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return PrintJSON(map[string]any{"issues": items})
+	response := map[string]any{"issues": items}
+	if defaultFilterActive {
+		response["hidden_count"] = hiddenCount
+	}
+	return PrintJSON(response)
+}
+
+// countHiddenIssues returns the number of closed/cancelled issues that match
+// the same parent/type/priority filters as the surrounding list call. Only
+// invoked when the default status filter is active, so the caller can
+// surface "you are not seeing N issues" in the response.
+func (a *App) countHiddenIssues(ctx context.Context, parentID, issueType, priority string) (int, error) {
+	clauses := []string{"(i.status = ? OR i.status = ?)"}
+	params := []any{StatusClosed, StatusCancelled}
+
+	if parentID != "" {
+		resolvedParentID, err := a.resolveIssueID(ctx, parentID)
+		if err != nil {
+			return 0, err
+		}
+		clauses = append(clauses, "i.parent_id = ?")
+		params = append(params, resolvedParentID)
+	}
+	if issueType != "" {
+		clauses = append(clauses, "i.type = ?")
+		params = append(params, issueType)
+	}
+	if priority != "" {
+		clauses = append(clauses, "i.priority = ?")
+		params = append(params, priority)
+	}
+
+	query := "SELECT COUNT(*) FROM issues i WHERE " + strings.Join(clauses, " AND ")
+	var count int
+	if err := a.db.QueryRowContext(ctx, query, params...).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func (a *App) runStatus(ctx context.Context) error {
@@ -454,6 +515,7 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 	status := fs.String("status", "", "")
 	parentID := fs.String("parent", "", "")
 	priority := fs.String("priority", "", "")
+	long := fs.Bool("long", false, "")
 	fs.SetOutput(io.Discard)
 
 	if err := fs.Parse(args[1:]); err != nil {
@@ -538,10 +600,14 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 		return err
 	}
 
-	return PrintJSON(updated)
+	if *long {
+		return PrintJSON(updated)
+	}
+	return PrintJSON(NewIssueRef(updated))
 }
 
 func (a *App) runStatusChange(ctx context.Context, args []string, nextStatus string) error {
+	long, args := extractLongFlag(args)
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
 		PrintCommandHelp(CommandNameForStatus(nextStatus))
 		return nil
@@ -582,10 +648,31 @@ func (a *App) runStatusChange(ctx context.Context, args []string, nextStatus str
 	if err != nil {
 		return err
 	}
-	return PrintJSON(updated)
+	if long {
+		return PrintJSON(updated)
+	}
+	return PrintJSON(NewIssueRef(updated))
+}
+
+// extractLongFlag pulls --long out of a positional argument slice and returns
+// the remaining args. Used by commands whose flags are positional (close,
+// cancel, reopen, claim, unclaim, dep add, dep remove, note add) so the
+// --long flag can sit anywhere on the command line.
+func extractLongFlag(args []string) (bool, []string) {
+	long := false
+	out := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg == "--long" {
+			long = true
+			continue
+		}
+		out = append(out, arg)
+	}
+	return long, out
 }
 
 func (a *App) runClaim(ctx context.Context, args []string) error {
+	long, args := extractLongFlag(args)
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
 		PrintCommandHelp("claim")
 		return nil
@@ -627,10 +714,14 @@ func (a *App) runClaim(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return PrintJSON(updated)
+	if long {
+		return PrintJSON(updated)
+	}
+	return PrintJSON(NewIssueRef(updated))
 }
 
 func (a *App) runUnclaim(ctx context.Context, args []string) error {
+	long, args := extractLongFlag(args)
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
 		PrintCommandHelp("unclaim")
 		return nil
@@ -656,14 +747,19 @@ func (a *App) runUnclaim(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return PrintJSON(updated)
+	if long {
+		return PrintJSON(updated)
+	}
+	return PrintJSON(NewIssueRef(updated))
 }
 
 func (a *App) runClose(ctx context.Context, args []string) error {
-	// Extract --cascade, --note and --reason from anywhere in the args since
-	// flag.Parse stops at the first non-flag argument and the ID is positional.
-	// --reason is kept as an alias for --note for backwards compatibility.
+	// Extract --cascade, --note, --reason and --long from anywhere in the args
+	// since flag.Parse stops at the first non-flag argument and the ID is
+	// positional. --reason is kept as an alias for --note for backwards
+	// compatibility.
 	cascade := false
+	long := false
 	var note string
 	var filtered []string
 	for i := 0; i < len(args); i++ {
@@ -674,6 +770,8 @@ func (a *App) runClose(ctx context.Context, args []string) error {
 		}
 		if arg == "--cascade" {
 			cascade = true
+		} else if arg == "--long" {
+			long = true
 		} else if (arg == "--note" || arg == "--reason") && i+1 < len(args) {
 			note = args[i+1]
 			i++
@@ -687,7 +785,7 @@ func (a *App) runClose(ctx context.Context, args []string) error {
 	}
 
 	if len(filtered) != 1 {
-		return &CLIError{Code: "usage", Message: "usage: ait close <id> [--cascade] [--note <text>]", ExitCode: 64}
+		return &CLIError{Code: "usage", Message: "usage: ait close <id> [--cascade] [--note <text>] [--long]", ExitCode: 64}
 	}
 
 	// If --note (or the --reason alias) was given, add a note before closing.
@@ -698,19 +796,24 @@ func (a *App) runClose(ctx context.Context, args []string) error {
 	}
 
 	if cascade {
-		return a.runCascadeClose(ctx, filtered[0])
+		return a.runCascadeClose(ctx, filtered[0], long)
 	}
-	return a.runStatusChange(ctx, filtered, StatusClosed)
+	statusArgs := filtered
+	if long {
+		statusArgs = append(statusArgs, "--long")
+	}
+	return a.runStatusChange(ctx, statusArgs, StatusClosed)
 }
 
-func (a *App) runCascadeClose(ctx context.Context, key string) error {
+func (a *App) runCascadeClose(ctx context.Context, key string, long bool) error {
 	internalID, err := a.resolveIssueID(ctx, key)
 	if err != nil {
 		return err
 	}
 
 	now := NowUTC()
-	closed := make([]IssueRef, 0)
+	closedRefs := make([]IssueRef, 0)
+	closedFull := make([]Issue, 0)
 
 	var closeTree func(id int64) error
 	closeTree = func(id int64) error {
@@ -727,13 +830,12 @@ func (a *App) runCascadeClose(ctx context.Context, key string) error {
 			); err != nil {
 				return err
 			}
-			closed = append(closed, IssueRef{
-				ID:       issue.ID,
-				Title:    issue.Title,
-				Status:   StatusClosed,
-				Type:     issue.Type,
-				Priority: issue.Priority,
-			})
+			issue.Status = StatusClosed
+			issue.UpdatedAt = now
+			nowStr := now
+			issue.ClosedAt = &nowStr
+			closedRefs = append(closedRefs, NewIssueRef(issue))
+			closedFull = append(closedFull, issue)
 		}
 
 		// Recurse into children.
@@ -766,10 +868,14 @@ func (a *App) runCascadeClose(ctx context.Context, key string) error {
 		return err
 	}
 
-	return PrintJSON(map[string]any{"closed": closed})
+	if long {
+		return PrintJSON(map[string]any{"closed": closedFull})
+	}
+	return PrintJSON(map[string]any{"closed": closedRefs})
 }
 
 func (a *App) runReopen(ctx context.Context, args []string) error {
+	long, args := extractLongFlag(args)
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
 		PrintCommandHelp("reopen")
 		return nil
@@ -804,7 +910,10 @@ func (a *App) runReopen(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return PrintJSON(updated)
+	if long {
+		return PrintJSON(updated)
+	}
+	return PrintJSON(NewIssueRef(updated))
 }
 
 func (a *App) runReady(ctx context.Context, args []string) error {
@@ -865,6 +974,7 @@ func (a *App) runDependency(ctx context.Context, args []string) error {
 }
 
 func (a *App) runDepAdd(ctx context.Context, args []string) error {
+	long, args := extractLongFlag(args)
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
 		PrintCommandHelp("dep add")
 		return nil
@@ -909,10 +1019,18 @@ func (a *App) runDepAdd(ctx context.Context, args []string) error {
 		return err
 	}
 
-	return a.runDepList(ctx, []string{blockedID})
+	if long {
+		return a.runDepList(ctx, []string{blockedID})
+	}
+	return PrintJSON(map[string]any{
+		"ok":         true,
+		"blocked_id": blockedID,
+		"blocker_id": blockerID,
+	})
 }
 
 func (a *App) runDepRemove(ctx context.Context, args []string) error {
+	long, args := extractLongFlag(args)
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
 		PrintCommandHelp("dep remove")
 		return nil
@@ -943,7 +1061,14 @@ func (a *App) runDepRemove(ctx context.Context, args []string) error {
 		return &CLIError{Code: "not_found", Message: "dependency not found", ExitCode: 66}
 	}
 
-	return a.runDepList(ctx, []string{args[0]})
+	if long {
+		return a.runDepList(ctx, []string{args[0]})
+	}
+	return PrintJSON(map[string]any{
+		"ok":         true,
+		"blocked_id": args[0],
+		"blocker_id": args[1],
+	})
 }
 
 func (a *App) runDepList(ctx context.Context, args []string) error {
@@ -1020,6 +1145,7 @@ func (a *App) runNote(ctx context.Context, args []string) error {
 }
 
 func (a *App) runNoteAdd(ctx context.Context, args []string) error {
+	long, args := extractLongFlag(args)
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
 		PrintCommandHelp("note add")
 		return nil
@@ -1063,11 +1189,18 @@ func (a *App) runNoteAdd(ctx context.Context, args []string) error {
 		return err
 	}
 
-	return PrintJSON(Note{
-		ID:        noteID,
-		IssueID:   issue.ID,
-		Body:      body,
-		CreatedAt: createdAt,
+	if long {
+		return PrintJSON(Note{
+			ID:        noteID,
+			IssueID:   issue.ID,
+			Body:      body,
+			CreatedAt: createdAt,
+		})
+	}
+	return PrintJSON(map[string]any{
+		"ok":       true,
+		"issue_id": issue.ID,
+		"note_id":  noteID,
 	})
 }
 
