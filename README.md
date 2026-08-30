@@ -394,7 +394,7 @@ GOCACHE=$(pwd)/.gocache go test ./...
 To build the binary:
 
 ```bash
-GOCACHE=$(pwd)/.gocache go build -o ait .
+GOCACHE=$(pwd)/.gocache go build -o ait ./cmd/ait
 ```
 
 ### Version Embedding
@@ -404,7 +404,7 @@ Release builds inject the version and repository URL at compile time via ldflags
 If you fork this repository and want the update check to point at your own releases, either update the `RepoURL` default in `internal/ait/version.go` or pass it via ldflags:
 
 ```bash
-go build -ldflags "-X agent-issue-tracker/internal/ait.Version=v0.1.0 -X agent-issue-tracker/internal/ait.RepoURL=https://github.com/youruser/yourfork" -o ait .
+go build -ldflags "-X github.com/ohnotnow/agent-issue-tracker/internal/ait.Version=v0.1.0 -X github.com/ohnotnow/agent-issue-tracker/internal/ait.RepoURL=https://github.com/youruser/yourfork" -o ait ./cmd/ait
 ```
 
 ### Web UI

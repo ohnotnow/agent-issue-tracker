@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"agent-issue-tracker/internal/ait"
+	"github.com/ohnotnow/agent-issue-tracker/internal/ait"
 )
 
 func main() {

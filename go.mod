@@ -1,4 +1,4 @@
-module agent-issue-tracker
+module github.com/ohnotnow/agent-issue-tracker
 
 go 1.24.1
 

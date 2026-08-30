@@ -299,7 +299,7 @@ func detectPackageManager(path, goos, gopath, home string) (pmHint, pmAction) {
 	if goBin != "" && (p == goBin || strings.HasPrefix(p, goBin+"/")) {
 		return pmHint{
 			manager: "'go install'",
-			command: "go install github.com/ohnotnow/agent-issue-tracker@latest",
+			command: "go install github.com/ohnotnow/agent-issue-tracker/cmd/ait@latest",
 		}, pmRedirect
 	}
 

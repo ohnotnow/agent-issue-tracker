@@ -16,7 +16,7 @@ Last updated: 2026-04-03
 ## Directory Structure
 
 ```text
-main.go                  CLI entrypoint; parses global `--db`, opens app, dispatches commands
+cmd/ait/main.go          CLI entrypoint; parses global `--db`, opens app, dispatches commands
 internal/ait/app.go      Command handlers and CLI help text
 internal/ait/store.go    DB access, query helpers, legacy migration, ready/flush logic
 internal/ait/migrate.go  Forward-only schema migration registry and schema_version tracking
@@ -26,14 +26,14 @@ internal/ait/keys.go     Root public ID generation using Sqids
 internal/ait/format.go   Human/tree list rendering and Markdown export formatting
 internal/ait/completion.go  Shell completion script generation (bash, zsh)
 internal/ait/version.go  `version` command and GitHub release check
-main_test.go             End-to-end CLI behavior tests against in-memory/temp SQLite DBs
+cmd/ait/main_test.go     End-to-end CLI behavior tests against in-memory/temp SQLite DBs
 internal/ait/version_test.go  Unit tests for version comparison and release URL logic
 claude/                  Claude Code skill/agent docs for using `ait`
 ```
 
 ## Architecture
 
-- `main.go` is intentionally thin: it extracts `--db`, handles help/version shortcuts, opens `ait.App`, then delegates to `App.Run`.
+- `cmd/ait/main.go` is intentionally thin: it extracts `--db`, handles help/version shortcuts, opens `ait.App`, then delegates to `App.Run`.
 - `App.Run` in [internal/ait/app.go](/Users/billy/Documents/code/agent-issue-tracker/internal/ait/app.go) is the command router for all subcommands.
 - `Open()` in [internal/ait/store.go](/Users/billy/Documents/code/agent-issue-tracker/internal/ait/store.go) configures SQLite pragmas, ensures the schema exists, applies migrations, infers/loads the project prefix, and re-synchronizes public IDs.
 - Most behavior lives in a single package, `internal/ait`, split by concern rather than by large domain modules.
@@ -102,7 +102,7 @@ Primary commands implemented in [internal/ait/app.go](/Users/billy/Documents/cod
 - `list --tree` prints ASCII hierarchy
 - `export` is the only command that emits Markdown instead of JSON
 - Every subcommand supports `--help`/`-h` for command-specific usage text
-- `completion` is handled in `main.go` before `Open()` (no database needed)
+- `completion` is handled in `cmd/ait/main.go` before `Open()` (no database needed)
 
 ## Business Logic And Conventions
 
@@ -154,7 +154,7 @@ There is no user authentication or role system. Coordination is lightweight and 
 ## Testing
 
 - Framework: Go `testing`
-- Main pattern: end-to-end command tests in [main_test.go](/Users/billy/Documents/code/agent-issue-tracker/main_test.go)
+- Main pattern: end-to-end command tests in [main_test.go](/Users/billy/Documents/code/agent-issue-tracker/cmd/ait/main_test.go)
 - Storage strategy: `:memory:` SQLite for most tests; temp-file DBs for reopen/migration scenarios
 - Coverage emphasis:
   - creation/show/update/status transitions

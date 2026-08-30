@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-08-29
+
+### Fixed
+- The self-update redirect for go-install users printed `go install github.com/ohnotnow/agent-issue-tracker@latest`, a command that could never work: `go.mod` declared the bare module name `agent-issue-tracker`, and Go refuses to install a module whose declared path doesn't match the path you asked for. The module is now declared under its full GitHub path and the hint points at `github.com/ohnotnow/agent-issue-tracker/cmd/ait@latest`, which installs a binary actually named `ait` rather than `agent-issue-tracker`. (Spotted by a passing agent reading the source; nobody had ever hit it in practice, because nobody could go-install the tool in the first place.) `go install` works from this release's tag onwards; older tags still carry the bare module name.
+
+### Changed
+- The main package moved from the repository root to `cmd/ait/` in support of the above (with `go install`, the binary is named after the last element of the package path). Local builds are now `go build -o ait ./cmd/ait`; release builds and docs updated to match. No change to the CLI itself.
+
 ## [1.14.0] - 2026-07-12
 
 ### Changed
@@ -192,7 +200,8 @@ First stable release. Core feature set:
 - Forward-only schema migration system
 - Custom database path via `--db`
 
-[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.14.0...HEAD
+[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.15.0...HEAD
+[1.15.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.14.0...v1.15.0
 [1.14.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.13.0...v1.14.0
 [1.13.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.12.0...v1.13.0
 [1.12.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.11.0...v1.12.0

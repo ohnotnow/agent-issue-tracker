@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"agent-issue-tracker/internal/ait"
+	"github.com/ohnotnow/agent-issue-tracker/internal/ait"
 	_ "modernc.org/sqlite"
 )
 

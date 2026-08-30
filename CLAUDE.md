@@ -4,14 +4,14 @@ Local-first CLI issue tracker for coding agents. Go 1.24, SQLite, single binary.
 
 ## Quick Reference
 
-- **Build**: `GOCACHE=$(pwd)/.gocache go build -o ait .`
+- **Build**: `GOCACHE=$(pwd)/.gocache go build -o ait ./cmd/ait`
 - **Test**: `GOCACHE=$(pwd)/.gocache go test ./...`
 - **Run (dev)**: `go run . <command>`
 
 ## Project Structure
 
 ```
-main.go                     Entrypoint: --db flag extraction, help/version shortcuts, Open + Run
+cmd/ait/main.go             Entrypoint: --db flag extraction, help/version shortcuts, Open + Run
 internal/ait/
   app.go                    Command router, flag parsing, per-command handlers and help text
   store.go                  DB access, queries, ready/flush logic, schema bootstrap, Open()
@@ -29,7 +29,7 @@ claude/                     Skills and agent docs for Claude Code integration
 
 ## Architecture
 
-- `main.go` is thin: extracts `--db`, looks up command via `LookupCommand`, opens `App` only if `cmd.NeedsDB` is true.
+- `cmd/ait/main.go` is thin: extracts `--db`, looks up command via `LookupCommand`, opens `App` only if `cmd.NeedsDB` is true.
 - `App.Run()` dispatches to command handlers in `app.go`.
 - `Open()` in `store.go` sets up pragmas, creates schema, runs migrations, infers prefix, syncs public IDs.
 - Single package `internal/ait` split by concern, not by domain.

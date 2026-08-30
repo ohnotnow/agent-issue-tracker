@@ -42,7 +42,7 @@ jobs:
           if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
           VERSION="${GITHUB_REF_NAME}"
           REPO_URL="https://github.com/${{ github.repository }}"
-          go build -ldflags "-X agent-issue-tracker/internal/ait.Version=${VERSION} -X agent-issue-tracker/internal/ait.RepoURL=${REPO_URL}" -o "ait-${GOOS}-${GOARCH}${ext}" .
+          go build -ldflags "-X github.com/ohnotnow/agent-issue-tracker/internal/ait.Version=${VERSION} -X github.com/ohnotnow/agent-issue-tracker/internal/ait.RepoURL=${REPO_URL}" -o "ait-${GOOS}-${GOARCH}${ext}" ./cmd/ait
 
       - uses: actions/upload-artifact@v4
         with:
