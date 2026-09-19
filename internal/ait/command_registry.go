@@ -143,7 +143,7 @@ Use --long to get the full Issue record back, including description.
 
 Flags:
   --title <text>         Issue title (required unless --human)
-  --description <text>   Issue description (use @file to read from a file)
+  --description <text>   Issue description (@file reads a file, - reads stdin)
   --type <task|epic|initiative>  Issue type (default: task)
   --parent <id>          Parent issue ID (tasks and epics)
   --priority <P0-P4>     Priority level (default: P2)
@@ -282,14 +282,26 @@ By default, returns a slim ref. Use --long to get the full Issue record back.
 
 Flags:
   --title <text>         New title
-  --description <text>   New description (use @file to read from a file)
+  --description <text>   New description (@file reads a file, - reads stdin)
   --status <status>      New status (open, in_progress, closed, cancelled)
   --priority <P0-P4>     New priority
   --claim <agent-name>   Claim the issue for an agent as part of the update
                          (fails if already claimed, like the claim command)
   --human                Open $EDITOR pre-filled with the current title and
                          description (mutually exclusive with --title/--description)
+  --force                Allow a new description less than half the length of
+                         the existing one (otherwise refused as a likely mistake)
   --long                 Return the full Issue record instead of a slim ref
+  --dangerously-skip-read-check
+                         Rewrite an issue this session has not run 'show' on
+                         (see "Guards" below)
+
+Guards:
+  An empty --description is refused. A new description shorter than half the
+  existing one is refused unless --force is given. When CLAUDE_CODE_SESSION_ID
+  is set (i.e. the caller is a coding agent), --title, --description and
+  --human are refused unless this session ran 'ait show <id>' within the last
+  hour. Runs with no session id are never checked.
 
 Examples:
   ait update PROJ-1 --title "Renamed issue"
@@ -298,7 +310,7 @@ Examples:
   ait update PROJ-1 --human
   ait edit PROJ-1 --human --priority P1
 `,
-			Flags:   []string{"--title", "--description", "--status", "--priority", "--claim", "--parent", "--human", "--long"},
+			Flags:   []string{"--title", "--description", "--status", "--priority", "--claim", "--parent", "--human", "--force", "--long", SkipReadCheckFlag},
 			NeedsDB: true,
 			Run: func(a *App, ctx context.Context, args []string) error {
 				return a.runUpdate(ctx, args)
@@ -321,13 +333,17 @@ Flags:
   --note <text>   Add a closing note before closing the issue
   --reason <text> Alias for --note (kept for backwards compatibility)
   --long          Return the full Issue record(s) instead of a slim ref
+  --dangerously-skip-read-check
+                  With --note: close an issue this session has not run 'show'
+                  on within the last hour (only checked when
+                  CLAUDE_CODE_SESSION_ID is set)
 
 Examples:
   ait close PROJ-1
   ait close PROJ-1 --cascade
   ait close PROJ-1 --note "Superseded by new approach"
 `,
-			Flags:   []string{"--cascade", "--note", "--reason", "--long"},
+			Flags:   []string{"--cascade", "--note", "--reason", "--long", SkipReadCheckFlag},
 			NeedsDB: true,
 			Run: func(a *App, ctx context.Context, args []string) error {
 				return a.runClose(ctx, args)
@@ -369,12 +385,16 @@ Flags:
   --note <text>   Add a note before cancelling the issue
   --reason <text> Alias for --note
   --long          Return the full Issue record instead of a slim ref
+  --dangerously-skip-read-check
+                  With --note: cancel an issue this session has not run 'show'
+                  on within the last hour (only checked when
+                  CLAUDE_CODE_SESSION_ID is set)
 
 Examples:
   ait cancel PROJ-1
   ait cancel PROJ-1 --note "Superseded by new approach"
 `,
-			Flags:   []string{"--note", "--reason", "--long"},
+			Flags:   []string{"--note", "--reason", "--long", SkipReadCheckFlag},
 			NeedsDB: true,
 			Run: func(a *App, ctx context.Context, args []string) error {
 				return a.runCancel(ctx, args)

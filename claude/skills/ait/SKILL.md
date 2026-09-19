@@ -56,7 +56,15 @@ ait update <id> --status in_progress   # Start working
 ait update <id> --status open          # Back to open
 ait update <id> --title "New title"    # Change title
 ait update <id> --priority P0          # Change priority
+ait update <id> --description @spec.md # Replace the description (whole text, not a diff)
+ait update <id> --description - <<'EOF' # Or via heredoc on stdin
+Whole new description here.
+EOF
 ```
+
+**Read before you write.** `ait show <id>` first, then `update`. The tool records which session showed an issue, and `update --title/--description` and `close --note` are refused (`unread` error) unless you showed it within the last hour. This is the same rule as reading a file before editing it, and it exists because an agent once overwrote a hand-written issue body without having looked at it. If the refusal says the show was too long ago, run `show` again and re-read it; your context may have been compacted since. `--dangerously-skip-read-check` overrides the guard and should almost never appear in your commands.
+
+Two more refusals: an empty `--description` is rejected, and a replacement under half the length of the existing description is rejected as a likely diff or summary unless you pass `--force`. Only use `--force` when you have just read the old body and mean to replace it.
 
 ### Close / Cancel / Reopen
 ```bash

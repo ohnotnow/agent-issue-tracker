@@ -216,10 +216,19 @@ func NewID() (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
-// ResolveDescription handles the @file convention for description values.
-// If the value starts with "@", the remainder is treated as a file path and
-// the file contents are returned. Otherwise the value is returned as-is.
+// ResolveDescription handles the @file and - (stdin) conventions for
+// description values, matching ant's --body. If the value starts with "@",
+// the remainder is treated as a file path and the file contents are
+// returned. A bare "-" reads stdin, so a heredoc works. Otherwise the value
+// is returned as-is.
 func ResolveDescription(value string) (string, error) {
+	if value == "-" {
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return "", &CLIError{Code: "io", Message: fmt.Sprintf("cannot read description from stdin: %s", err), ExitCode: 66}
+		}
+		return string(data), nil
+	}
 	if !strings.HasPrefix(value, "@") {
 		return value, nil
 	}

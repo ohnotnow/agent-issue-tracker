@@ -200,6 +200,22 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version:     5,
+		description: "record which session last showed an issue",
+		apply: func(ctx context.Context, tx *sql.Tx) error {
+			statements := []string{
+				`ALTER TABLE issues ADD COLUMN shown_by_session TEXT NULL;`,
+				`ALTER TABLE issues ADD COLUMN shown_at TEXT NULL;`,
+			}
+			for _, stmt := range statements {
+				if _, err := tx.ExecContext(ctx, stmt); err != nil {
+					return fmt.Errorf("migration 5: %w", err)
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // currentSchemaVersion returns the version recorded in schema_version,

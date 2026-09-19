@@ -21,6 +21,7 @@ internal/ait/
   keys.go                   Sqids-based root public ID generation
   format.go                 Human/tree list rendering, Markdown export
   completion.go             Bash/zsh completion script generation
+  guards.go                 Read check, empty-body and shrink refusals for blind writes
   version.go                Version command and GitHub release check
 main_test.go                End-to-end CLI tests (in-memory and temp-file SQLite)
 internal/ait/version_test.go  Version comparison unit tests
@@ -52,6 +53,8 @@ claude/                     Skills and agent docs for Claude Code integration
 - `dep add` rejects self-dependencies and transitive cycles.
 - `close --cascade` recursively closes subtrees, skipping already-terminal issues.
 - Notes and dependencies use `ON DELETE CASCADE`.
+- `show` stamps the issue with `CLAUDE_CODE_SESSION_ID` and the time. `update` (title/description/--human) and `close`/`cancel --note` refuse unless the same session showed the issue within `ShownWindow` (one hour); no session id means no check. Override with `--dangerously-skip-read-check`.
+- `update` refuses an empty description, and one under half the existing length without `--force`.
 
 ## Testing Conventions
 
@@ -61,7 +64,7 @@ claude/                     Skills and agent docs for Claude Code integration
 
 ## Schema Migrations
 
-Four numbered migrations (baseline, claim fields, initiative type, flush history tables). Append-only, one transaction per step. Also handles legacy TEXT-ID schema upgrade.
+Five numbered migrations (baseline, claim fields, initiative type, flush history tables, shown-by-session columns). Append-only, one transaction per step. Also handles legacy TEXT-ID schema upgrade.
 
 ## Status
 

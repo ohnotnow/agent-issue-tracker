@@ -10,10 +10,19 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ohnotnow/agent-issue-tracker/internal/ait"
 	_ "modernc.org/sqlite"
 )
+
+// TestMain clears CLAUDE_CODE_SESSION_ID so the read check (which only bites
+// when a session id is present) stays out of tests that are not about it.
+// The read-check tests set the variable explicitly with t.Setenv.
+func TestMain(m *testing.M) {
+	os.Unsetenv("CLAUDE_CODE_SESSION_ID")
+	os.Exit(m.Run())
+}
 
 // initResult decodes the JSON payload emitted by `ait init`.
 type initResult struct {
@@ -3436,4 +3445,235 @@ func TestDeleteNotFound(t *testing.T) {
 			t.Fatalf("expected a not-found message, got: %s", err.Error())
 		}
 	})
+}
+
+func TestUpdateRefusesEmptyDescription(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var created ait.IssueRef
+		runJSONCommand(t, a, []string{"create", "--title", "Keep me", "--description", "precious body"}, &created)
+
+		for _, args := range [][]string{
+			{"update", created.ID, "--description", ""},
+			{"update", created.ID, "--description", "   \n"},
+		} {
+			err := runExpectError(t, a, args)
+			var cliErr *ait.CLIError
+			if !errors.As(err, &cliErr) || cliErr.Code != "validation" {
+				t.Fatalf("%v: expected validation error, got %v", args, err)
+			}
+		}
+
+		emptyFile := filepath.Join(t.TempDir(), "empty.txt")
+		if err := os.WriteFile(emptyFile, []byte("\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := runExpectError(t, a, []string{"update", created.ID, "--description", "@" + emptyFile}); err == nil {
+			t.Fatal("expected @file with empty contents to be refused")
+		}
+
+		var shown ait.ShowResponse
+		runJSONCommand(t, a, []string{"show", created.ID}, &shown)
+		if shown.Issue.Description != "precious body" {
+			t.Fatalf("description was changed: %q", shown.Issue.Description)
+		}
+	})
+}
+
+func TestUpdateRefusesLargeShrinkWithoutForce(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		long := strings.Repeat("A long and detailed description. ", 10) // ~330 chars
+		var created ait.IssueRef
+		runJSONCommand(t, a, []string{"create", "--title", "Spec", "--description", long}, &created)
+
+		err := runExpectError(t, a, []string{"update", created.ID, "--description", "short summary"})
+		var cliErr *ait.CLIError
+		if !errors.As(err, &cliErr) || cliErr.Code != "shrink" {
+			t.Fatalf("expected shrink error, got %v", err)
+		}
+		if !strings.Contains(cliErr.Message, "--force") {
+			t.Fatalf("refusal should name --force: %s", cliErr.Message)
+		}
+
+		// Growing, or a modest trim, is never questioned.
+		runJSONCommand[any](t, a, []string{"update", created.ID, "--description", long + "One more sentence."}, nil)
+		runJSONCommand[any](t, a, []string{"update", created.ID, "--description", strings.Repeat("A long and detailed description. ", 7)}, nil)
+
+		// A short existing body can be replaced by anything.
+		var small ait.IssueRef
+		runJSONCommand(t, a, []string{"create", "--title", "Stub", "--description", "todo: write this up properly"}, &small)
+		runJSONCommand[any](t, a, []string{"update", small.ID, "--description", "x"}, nil)
+
+		// --force allows the deliberate rewrite.
+		runJSONCommand[any](t, a, []string{"update", created.ID, "--description", "short summary", "--force"}, nil)
+		var shown ait.ShowResponse
+		runJSONCommand(t, a, []string{"show", created.ID}, &shown)
+		if shown.Issue.Description != "short summary" {
+			t.Fatalf("forced rewrite not applied: %q", shown.Issue.Description)
+		}
+	})
+}
+
+func TestReadCheckIgnoredWithoutSessionID(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var created ait.IssueRef
+		runJSONCommand(t, a, []string{"create", "--title", "Human edit"}, &created)
+		runJSONCommand[any](t, a, []string{"update", created.ID, "--title", "Renamed without a show"}, nil)
+		runJSONCommand[any](t, a, []string{"close", created.ID, "--note", "done"}, nil)
+	})
+}
+
+func TestReadCheckRefusesUnshownIssueInSession(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "session-a")
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var created ait.IssueRef
+		runJSONCommand(t, a, []string{"create", "--title", "Agent edit", "--description", "body"}, &created)
+
+		expectUnread := func(args ...string) {
+			t.Helper()
+			err := runExpectError(t, a, args)
+			var cliErr *ait.CLIError
+			if !errors.As(err, &cliErr) || cliErr.Code != "unread" {
+				t.Fatalf("%v: expected unread error, got %v", args, err)
+			}
+			if !strings.Contains(cliErr.Message, "--dangerously-skip-read-check") {
+				t.Fatalf("refusal should name the override flag: %s", cliErr.Message)
+			}
+		}
+		expectUnread("update", created.ID, "--title", "Blind rename")
+		expectUnread("update", created.ID, "--description", "blind rewrite")
+		expectUnread("close", created.ID, "--note", "blind close")
+		expectUnread("cancel", created.ID, "--reason", "blind cancel")
+
+		// Status, priority and claim changes are not body writes and pass.
+		runJSONCommand[any](t, a, []string{"update", created.ID, "--priority", "P1", "--status", "in_progress"}, nil)
+		// A plain close with no note is not guarded either.
+		var other ait.IssueRef
+		runJSONCommand(t, a, []string{"create", "--title", "Plain close"}, &other)
+		runJSONCommand[any](t, a, []string{"close", other.ID}, nil)
+
+		// The override flag works on every guarded command.
+		runJSONCommand[any](t, a, []string{"update", created.ID, "--title", "Forced rename", "--dangerously-skip-read-check"}, nil)
+		runJSONCommand[any](t, a, []string{"close", created.ID, "--dangerously-skip-read-check", "--note", "forced"}, nil)
+	})
+}
+
+func TestReadCheckPassesAfterShowInSameSession(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "session-a")
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var created ait.IssueRef
+		runJSONCommand(t, a, []string{"create", "--title", "Agent edit", "--description", "body"}, &created)
+		runJSONCommand[any](t, a, []string{"show", created.ID}, nil)
+		runJSONCommand[any](t, a, []string{"update", created.ID, "--title", "Read then renamed"}, nil)
+		runJSONCommand[any](t, a, []string{"close", created.ID, "--note", "read then closed"}, nil)
+	})
+}
+
+func TestReadCheckRefusesShowFromAnotherSession(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+	ctx := context.Background()
+
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "session-a")
+	app, err := ait.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created ait.IssueRef
+	runJSONCommand(t, app, []string{"create", "--title", "Shared", "--description", "body"}, &created)
+	runJSONCommand[any](t, app, []string{"show", created.ID}, nil)
+	app.Close()
+
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "session-b")
+	app, err = ait.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Close()
+	runErr := runExpectError(t, app, []string{"update", created.ID, "--title", "From B"})
+	var cliErr *ait.CLIError
+	if !errors.As(runErr, &cliErr) || cliErr.Code != "unread" {
+		t.Fatalf("expected unread error, got %v", runErr)
+	}
+	if !strings.Contains(cliErr.Message, "by a different session") {
+		t.Fatalf("expected the different-session reason, got: %s", cliErr.Message)
+	}
+}
+
+func TestReadCheckExpiresAfterWindow(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+	ctx := context.Background()
+
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "session-a")
+	app, err := ait.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Close()
+	var created ait.IssueRef
+	runJSONCommand(t, app, []string{"create", "--title", "Stale", "--description", "body"}, &created)
+	runJSONCommand[any](t, app, []string{"show", created.ID}, nil)
+
+	// Backdate the show to just outside the window.
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	stale := time.Now().UTC().Add(-ait.ShownWindow - time.Minute).Format(time.RFC3339)
+	if _, err := db.Exec(`UPDATE issues SET shown_at = ? WHERE public_id = ?`, stale, created.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	runErr := runExpectError(t, app, []string{"update", created.ID, "--title", "Too late"})
+	var cliErr *ait.CLIError
+	if !errors.As(runErr, &cliErr) || cliErr.Code != "unread" {
+		t.Fatalf("expected unread error, got %v", runErr)
+	}
+	if !strings.Contains(cliErr.Message, "more than") {
+		t.Fatalf("expected the expiry reason, got: %s", cliErr.Message)
+	}
+
+	// A fresh show restores access.
+	runJSONCommand[any](t, app, []string{"show", created.ID}, nil)
+	runJSONCommand[any](t, app, []string{"update", created.ID, "--title", "Fresh look"}, nil)
+}
+
+func TestDescriptionFromStdinDash(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var created ait.IssueRef
+		runJSONCommand(t, a, []string{"create", "--title", "Stdin", "--description", "old body"}, &created)
+
+		withStdin(t, "new body from heredoc\n")
+		runJSONCommand[any](t, a, []string{"update", created.ID, "--description", "-"}, nil)
+		var shown ait.ShowResponse
+		runJSONCommand(t, a, []string{"show", created.ID}, &shown)
+		if shown.Issue.Description != "new body from heredoc" {
+			t.Fatalf("stdin description not applied: %q", shown.Issue.Description)
+		}
+
+		// The empty-heredoc mistake is refused rather than blanking the body.
+		withStdin(t, "")
+		err := runExpectError(t, a, []string{"update", created.ID, "--description", "-"})
+		var cliErr *ait.CLIError
+		if !errors.As(err, &cliErr) || cliErr.Code != "validation" {
+			t.Fatalf("expected validation error for empty stdin, got %v", err)
+		}
+	})
+}
+
+// withStdin replaces os.Stdin with a pipe holding content for the rest of the test.
+func withStdin(t *testing.T, content string) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(w, content); err != nil {
+		t.Fatal(err)
+	}
+	w.Close()
+	orig := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() { os.Stdin = orig; r.Close() })
 }

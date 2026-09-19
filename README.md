@@ -177,7 +177,29 @@ ait create --title "Auth overhaul" --description @design-doc.md
 ait update <id> --description @updated-spec.txt
 ```
 
-If the value starts with `@`, the remainder is treated as a file path and the contents are used as the description. Without the `@` prefix, the value is used as a literal string as before.
+If the value starts with `@`, the remainder is treated as a file path and the contents are used as the description. A bare `-` reads the description from stdin, so a heredoc works (matching `ant --body -`):
+
+```bash
+ait update <id> --description - <<'EOF'
+Rewritten body, apostrophes and `backticks` fine.
+EOF
+```
+
+Without either, the value is used as a literal string as before.
+
+## Guards Against Blind Writes
+
+Both guards exist because an agent once wiped an issue body by piping an empty heredoc into an update, and another sent a diff where the whole text was expected.
+
+- `update --description ""` (or `@file` on an empty file) is refused rather than blanking the body.
+- A new description less than half the length of the existing one is refused with a `shrink` error, unless you pass `--force`. Growing a description is never questioned. Bodies under 200 characters are exempt.
+- When `CLAUDE_CODE_SESSION_ID` is set (Claude Code sets it for every command an agent runs), `show` records the session and time against the issue. `update --title/--description/--human` and `close`/`cancel --note` then refuse with an `unread` error unless that session ran `show` on the issue within the last hour. The error says which it was: never shown, shown by another session, or shown too long ago. A plain terminal has no session id, so humans are never checked. The override is deliberately long:
+
+```bash
+ait update <id> --description @rewrite.md --dangerously-skip-read-check
+```
+
+The hour is a constant (`ShownWindow` in `internal/ait/guards.go`), chosen so that a session whose context has been compacted since it last looked cannot keep editing on a stale memory of the issue.
 
 ## Close with a Note
 

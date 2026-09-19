@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-09-19
+
+### Added
+- Guards against blind writes, mirrored in `ant` (same flags, same error codes). `update` refuses an empty `--description` (a literal empty string, or an `@file` with nothing in it) rather than silently ignoring it. A replacement description under half the length of the existing one is refused with a new `shrink` error unless `--force` is passed, on the theory that a diff or a summary was sent where the whole text was expected; growing a description is never questioned and descriptions under 200 characters are exempt. And when `CLAUDE_CODE_SESSION_ID` is set (Claude Code sets it for every command an agent runs), `show` now records the session and time against the issue, and `update --title/--description/--human` and `close`/`cancel --note` refuse with a new `unread` error unless that same session showed the issue within the last hour. The message says which it was: never shown, shown by a different session, or shown too long ago. Runs with no session id, i.e. a person in a terminal, are never checked. The override flag is deliberately long: `--dangerously-skip-read-check`. Schema migration 5 adds the two `shown_*` columns. This came out of a session where an agent overwrote a hand-written issue it had never read; the hour-long window exists because context compaction keeps the session id but not the memory of what was read.
+- `--description -` on `create` and `update` reads the description from stdin, so a heredoc works, matching `ant --body -`. Until now a bare `-` was taken literally, which is how the agent above replaced an issue body with a single dash. With the empty-body refusal, that same command is now an error.
+
 ## [1.15.0] - 2026-08-29
 
 ### Fixed
@@ -200,7 +206,8 @@ First stable release. Core feature set:
 - Forward-only schema migration system
 - Custom database path via `--db`
 
-[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.15.0...HEAD
+[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.16.0...HEAD
+[1.16.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.15.0...v1.16.0
 [1.15.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.14.0...v1.15.0
 [1.14.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.13.0...v1.14.0
 [1.13.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.12.0...v1.13.0

@@ -273,6 +273,9 @@ func (a *App) runShow(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := a.markShown(ctx, internalID); err != nil {
+		return err
+	}
 
 	return PrintJSON(ShowResponse{
 		Issue:    iss,
@@ -542,19 +545,26 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 	claimAgent := fs.String("claim", "", "")
 	human := fs.Bool("human", false, "")
 	long := fs.Bool("long", false, "")
+	force := fs.Bool("force", false, "")
+	skipReadCheck := fs.Bool(strings.TrimPrefix(SkipReadCheckFlag, "--"), false, "")
 	fs.SetOutput(io.Discard)
 
 	if err := fs.Parse(args[1:]); err != nil {
 		return &CLIError{Code: "usage", Message: err.Error(), ExitCode: 64}
 	}
 
-	// Detect whether --claim was passed at all, so that --claim with an empty
-	// value can be rejected (matching the `claim` command) rather than silently
-	// ignored.
+	// Detect whether --claim / --description were passed at all, so that an
+	// empty value can be rejected (matching the `claim` command) rather than
+	// silently ignored. An empty description in particular is almost always
+	// an empty heredoc or a missing variable, not a request to blank the body.
 	claimRequested := false
+	descriptionRequested := false
 	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "claim" {
+		switch f.Name {
+		case "claim":
 			claimRequested = true
+		case "description":
+			descriptionRequested = true
 		}
 	})
 
@@ -562,17 +572,26 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 		return &CLIError{Code: "usage", Message: "--human cannot be combined with --title or --description", ExitCode: 64}
 	}
 
-	if *description != "" {
+	if descriptionRequested {
 		resolved, err := ResolveDescription(*description)
 		if err != nil {
 			return err
 		}
 		*description = resolved
+		if strings.TrimSpace(*description) == "" {
+			return &CLIError{Code: "validation", Message: "description cannot be empty; to replace the body, pass the whole new text", ExitCode: 65}
+		}
 	}
 
 	current, err := a.fetchIssueByInternalID(ctx, internalID)
 	if err != nil {
 		return err
+	}
+
+	if *title != "" || descriptionRequested || *human {
+		if err := a.checkShown(ctx, internalID, current.ID, *skipReadCheck); err != nil {
+			return err
+		}
 	}
 
 	if *human {
@@ -584,7 +603,15 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 			*title = edTitle
 		}
 		if edDesc != strings.TrimSpace(current.Description) {
+			if strings.TrimSpace(edDesc) == "" {
+				return &CLIError{Code: "validation", Message: "description cannot be empty; no changes were saved", ExitCode: 65}
+			}
 			*description = edDesc
+		}
+	}
+	if *description != "" {
+		if err := checkDescriptionShrink(current.ID, current.Description, *description, *force); err != nil {
+			return err
 		}
 	}
 	if *status != "" {
@@ -828,6 +855,7 @@ func (a *App) runClose(ctx context.Context, args []string) error {
 	// compatibility.
 	cascade := false
 	long := false
+	skipReadCheck := false
 	var note string
 	var filtered []string
 	for i := 0; i < len(args); i++ {
@@ -835,6 +863,10 @@ func (a *App) runClose(ctx context.Context, args []string) error {
 		if arg == "--help" || arg == "-h" {
 			PrintCommandHelp("close")
 			return nil
+		}
+		if arg == SkipReadCheckFlag {
+			skipReadCheck = true
+			continue
 		}
 		if arg == "--cascade" {
 			cascade = true
@@ -862,6 +894,9 @@ func (a *App) runClose(ctx context.Context, args []string) error {
 	if strings.TrimSpace(note) != "" {
 		internalID, err := a.resolveIssueID(ctx, filtered[0])
 		if err != nil {
+			return err
+		}
+		if err := a.checkShown(ctx, internalID, filtered[0], skipReadCheck); err != nil {
 			return err
 		}
 		if _, _, err := a.addNote(ctx, internalID, "Closed: "+note); err != nil {
@@ -954,6 +989,7 @@ func (a *App) runCancel(ctx context.Context, args []string) error {
 	// This mirrors the surface of `close`: --reason is kept as an alias for
 	// --note.
 	long := false
+	skipReadCheck := false
 	var note string
 	var filtered []string
 	for i := 0; i < len(args); i++ {
@@ -961,6 +997,10 @@ func (a *App) runCancel(ctx context.Context, args []string) error {
 		if arg == "--help" || arg == "-h" {
 			PrintCommandHelp("cancel")
 			return nil
+		}
+		if arg == SkipReadCheckFlag {
+			skipReadCheck = true
+			continue
 		}
 		if arg == "--long" {
 			long = true
@@ -986,6 +1026,9 @@ func (a *App) runCancel(ctx context.Context, args []string) error {
 	if strings.TrimSpace(note) != "" {
 		internalID, err := a.resolveIssueID(ctx, filtered[0])
 		if err != nil {
+			return err
+		}
+		if err := a.checkShown(ctx, internalID, filtered[0], skipReadCheck); err != nil {
 			return err
 		}
 		if _, _, err := a.addNote(ctx, internalID, "Cancelled: "+note); err != nil {
