@@ -129,3 +129,27 @@ func PrintCommandHelp(cmd string) {
 	}
 	PrintHelp()
 }
+
+func isHelpFlag(arg string) bool {
+	return arg == "--help" || arg == "-h"
+}
+
+// HelpRequest reports whether args — the arguments following the command name
+// — is a bare request for help, and returns the topic to print. Help is
+// resolved before the database is opened so that `ait init --help` prints
+// usage without creating .ait/ as a side effect.
+func HelpRequest(cmd *Command, args []string) (string, bool) {
+	if len(args) == 0 {
+		return "", false
+	}
+	if isHelpFlag(args[0]) {
+		return cmd.Name, true
+	}
+	if len(args) > 1 && isHelpFlag(args[1]) {
+		topic := cmd.Name + " " + args[0]
+		if _, ok := subcommandHelp[topic]; ok {
+			return topic, true
+		}
+	}
+	return "", false
+}
