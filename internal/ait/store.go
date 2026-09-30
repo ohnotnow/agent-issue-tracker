@@ -119,7 +119,7 @@ func issueSelectColumns(alias string) string {
 }
 
 func issueRefSelectColumns(alias string) string {
-	return fmt.Sprintf(`%s.public_id, %s.title, %s.status, %s.type, %s.priority`, alias, alias, alias, alias, alias)
+	return fmt.Sprintf(`%s.public_id, %s.title, %s.status, %s.type, %s.priority, %s.claimed_by`, alias, alias, alias, alias, alias, alias)
 }
 
 func (a *App) resolveIssueID(ctx context.Context, key string) (int64, error) {
@@ -192,7 +192,7 @@ func (a *App) fetchIssueRefByInternalID(ctx context.Context, internalID int64) (
 		internalID,
 	)
 	var ref IssueRef
-	if err := row.Scan(&ref.ID, &ref.Title, &ref.Status, &ref.Type, &ref.Priority); err != nil {
+	if err := row.Scan(&ref.ID, &ref.Title, &ref.Status, &ref.Type, &ref.Priority, &ref.ClaimedBy); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return IssueRef{}, &CLIError{Code: "not_found", Message: fmt.Sprintf("issue %d not found", internalID), ExitCode: 66}
 		}

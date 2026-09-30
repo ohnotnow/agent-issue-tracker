@@ -53,11 +53,12 @@ type Note struct {
 }
 
 type IssueRef struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Status   string `json:"status"`
-	Type     string `json:"type"`
-	Priority string `json:"priority"`
+	ID        string  `json:"id"`
+	Title     string  `json:"title"`
+	Status    string  `json:"status"`
+	Type      string  `json:"type"`
+	Priority  string  `json:"priority"`
+	ClaimedBy *string `json:"claimed_by,omitempty"`
 }
 
 // NewIssueRef projects a full Issue into the slim IssueRef shape returned by
@@ -345,7 +346,7 @@ func scanIssueRefs(rows *sql.Rows) ([]IssueRef, error) {
 	items := make([]IssueRef, 0)
 	for rows.Next() {
 		var ref IssueRef
-		if err := rows.Scan(&ref.ID, &ref.Title, &ref.Status, &ref.Type, &ref.Priority); err != nil {
+		if err := rows.Scan(&ref.ID, &ref.Title, &ref.Status, &ref.Type, &ref.Priority, &ref.ClaimedBy); err != nil {
 			return nil, err
 		}
 		items = append(items, ref)
