@@ -3677,3 +3677,57 @@ func withStdin(t *testing.T, content string) {
 	os.Stdin = r
 	t.Cleanup(func() { os.Stdin = orig; r.Close() })
 }
+
+// TestHelpFlagsDoNotTouchDatabase covers upstream issue #4: `ait init --help`
+// printed usage but also created .ait/ in the working directory. Help must
+// never modify state, and it must work before init has ever been run.
+func TestHelpFlagsDoNotTouchDatabase(t *testing.T) {
+	cases := [][]string{
+		{"init", "--help"},
+		{"init", "-h"},
+		{"list", "--help"},
+		{"dep", "add", "--help"},
+		{"note", "list", "-h"},
+	}
+
+	for _, args := range cases {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			dir := t.TempDir()
+			t.Chdir(dir)
+
+			output := captureStdout(t, func() {
+				if err := dispatch(context.Background(), args); err != nil {
+					t.Fatalf("dispatch(%v) failed: %v", args, err)
+				}
+			})
+
+			if !strings.HasPrefix(output, "Usage:") {
+				t.Fatalf("dispatch(%v) printed %q, want usage text", args, output)
+			}
+
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatalf("read temp dir: %v", err)
+			}
+			if len(entries) != 0 {
+				t.Fatalf("dispatch(%v) created %d entries in the working directory, want none", args, len(entries))
+			}
+		})
+	}
+}
+
+// TestInitStillCreatesDatabase guards the other side of the help short-circuit.
+func TestInitStillCreatesDatabase(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	captureStdout(t, func() {
+		if err := dispatch(context.Background(), []string{"init", "--prefix", "demo"}); err != nil {
+			t.Fatalf("dispatch(init) failed: %v", err)
+		}
+	})
+
+	if _, err := os.Stat(filepath.Join(dir, ".ait", "ait.db")); err != nil {
+		t.Fatalf("expected .ait/ait.db after init: %v", err)
+	}
+}

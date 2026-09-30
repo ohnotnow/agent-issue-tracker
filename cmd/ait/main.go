@@ -10,16 +10,22 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
+	if err := dispatch(context.Background(), os.Args[1:]); err != nil {
+		handleExit(err)
+	}
+}
 
-	dbPath, args, err := extractDBFlag(os.Args[1:])
+// dispatch resolves and runs a single CLI invocation. It returns the command
+// error instead of exiting so the same path can be driven from tests.
+func dispatch(ctx context.Context, argv []string) error {
+	dbPath, args, err := extractDBFlag(argv)
 	if err != nil {
-		ait.ExitWithError(ait.NormalizeError(err))
+		return err
 	}
 
 	if len(args) == 0 {
 		ait.PrintHelp()
-		return
+		return nil
 	}
 
 	// Handle --help and --version as aliases for help/version commands.
@@ -31,32 +37,36 @@ func main() {
 
 	cmd, ok := ait.LookupCommand(args[0])
 	if !ok {
-		handleExit(ait.UnknownCommandError(args[0]))
+		return ait.UnknownCommandError(args[0])
 	}
+
+	// Help resolves before any database work: `ait init --help` must not
+	// create .ait/ as a side effect, and `ait list --help` should print usage
+	// rather than the "uninitialised" error.
+	if topic, ok := ait.HelpRequest(cmd, args[1:]); ok {
+		ait.PrintCommandHelp(topic)
+		return nil
+	}
+
 	if !cmd.NeedsDB {
-		if err := cmd.Run(nil, ctx, args[1:]); err != nil {
-			handleExit(err)
-		}
-		return
+		return cmd.Run(nil, ctx, args[1:])
 	}
 
 	// Every DB-backed command except init refuses to run until the database
 	// exists — only an explicit `ait init` creates it.
 	if cmd.Name != "init" {
 		if err := ait.RequireInitialised(dbPath); err != nil {
-			handleExit(err)
+			return err
 		}
 	}
 
 	app, err := ait.Open(ctx, dbPath)
 	if err != nil {
-		handleExit(err)
+		return err
 	}
 	defer app.Close()
 
-	if err := app.Run(ctx, args); err != nil {
-		handleExit(err)
-	}
+	return app.Run(ctx, args)
 }
 
 // handleExit translates a command error into stderr output (when there is
