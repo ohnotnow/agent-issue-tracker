@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-10-10
+
+The first release to come out of a full code review rather than a feature request. There are no new commands, but there is a run of fixes to IDs, claims, migrations and argument handling, which matter most when several agents share one tracker.
+
+### Changed
+- Commands now refuse stray words instead of silently ignoring every flag after them. Go's flag parser stops at the first positional word, and no command checked for leftovers, so `ait flush preview --dry-run` really flushed (the `--dry-run` was never seen), `ait self-update check` would have installed rather than checked, and `create`, `update`, `list`, `ready`, `log`, `log purge` and `init` quietly dropped filters or field changes. They now return a `usage` error (exit 64) naming the unexpected argument, before changing anything. This could break a script that relied on the old leniency, such as `ait list open`; use `--status open` instead.
+- Release binaries are now built with the current stable Go rather than the `go 1.24.1` minimum in `go.mod`, so they pick up compiler and standard library security fixes. The release workflow also runs `go vet` and the test suite before it publishes anything.
+
+### Fixed
+- A deleted child's number could be handed out again. 1.16.1 stopped siblings being renumbered, but the next number was still worked out from the children (and moved-away aliases) that survived, so deleting the only child, the highest-numbered child, or a moved issue whose alias held the number left nothing to remember it. The next child got the same ID, and any note or commit that mentioned the deleted one silently pointed at the newcomer. Each parent now records the highest number it has ever handed out (schema migration 7). Numbers freed before upgrading can't be recovered, so one of those may be reused once.
+- Two agents claiming the same issue at the same moment could both be told they had it. `claim` and `update --claim` read the issue, checked nobody held it, then wrote the claim, so racing agents could all pass the check; with eight processes racing, the old binary had more than one winner in 6 rounds out of 15. The claim is now a single conditional write: exactly one agent wins, the rest get the usual `conflict` error, and a losing `update --claim` changes none of its other fields either.
+- A failed upgrade could leave the database unusable. The schema version was only recorded after every pending migration had run, so if a later one failed, the earlier ones were applied but not recorded, and every following command tried them again and failed (`duplicate column name`). Separately, several agents starting at once after an upgrade all raced to apply the same migration, and some failed on their first command (13 opens in 80 in a test). Each migration now records its own version as it commits, and rechecks after taking the write lock, so it is applied exactly once.
+- SQLite's `foreign_keys` and `busy_timeout` settings only reached one database connection. Any other connection had cascading deletes switched off and gave up on a lock immediately instead of waiting. They are now applied to every connection.
+- `update --human` deleted Markdown headings and other lines starting with `#` from the description, even when only the title was changed, because every `#` line was treated as help text. A title starting with `#` (`#42 regression`) disappeared entirely and the first line of the body took its place. The help text now sits below a git-style `# ---- >8 ----` line, and only that line and what follows are discarded. If the line is deleted, the old behaviour applies, so the help never ends up in the description.
+- `list --human` and `list --tree` drew nothing for children whose parent had been filtered out: `list --parent <epic> --human` printed an empty list although the JSON had the tasks, and closing an epic hid its still-open children from the default human list. Such children are now drawn as roots under their full ID.
+- Bash completion failed to load in the bash 3.2 that ships with macOS (`syntax error near unexpected token '&'`). It now loads and completes there.
+- Correction to the 1.17.0 notes, which said moving an issue back to where it was restores its old ID. That holds for a move back to being a root; a move back under its former parent gets a new number.
+
 ## [1.17.0] - 2026-10-10
 
 ### Added
@@ -217,7 +235,10 @@ First stable release. Core feature set:
 - Forward-only schema migration system
 - Custom database path via `--db`
 
-[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.16.0...HEAD
+[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.18.0...HEAD
+[1.18.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.17.0...v1.18.0
+[1.17.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.16.1...v1.17.0
+[1.16.1]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.16.0...v1.16.1
 [1.16.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.15.0...v1.16.0
 [1.15.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.14.0...v1.15.0
 [1.14.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.13.0...v1.14.0
