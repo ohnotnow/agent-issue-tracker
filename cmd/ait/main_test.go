@@ -3447,6 +3447,62 @@ func TestDeleteNotFound(t *testing.T) {
 	})
 }
 
+// Child IDs are handed out once at create time. Deleting a child must not
+// shift its later siblings down on the next Open, or old references (notes,
+// commits) would silently point at a different issue.
+func TestDeleteKeepsSiblingIDsAcrossReopen(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "sticky.db")
+
+	a, err := ait.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	var epic ait.Issue
+	runJSONCommand(t, a, []string{"create", "--title", "Epic", "--type", "epic"}, &epic)
+	var first, second, third ait.Issue
+	runJSONCommand(t, a, []string{"create", "--title", "First", "--parent", epic.ID}, &first)
+	runJSONCommand(t, a, []string{"create", "--title", "Second", "--parent", epic.ID}, &second)
+	runJSONCommand(t, a, []string{"create", "--title", "Third", "--parent", epic.ID}, &third)
+	runJSONCommand[map[string]any](t, a, []string{"delete", first.ID, "--force"}, nil)
+	a.Close()
+
+	a, err = ait.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("reopen failed: %v", err)
+	}
+	defer a.Close()
+
+	var shown ait.ShowResponse
+	runJSONCommand(t, a, []string{"show", second.ID}, &shown)
+	if shown.Issue.Title != "Second" {
+		t.Fatalf("expected %s to still be Second after reopen, got %q", second.ID, shown.Issue.Title)
+	}
+	runJSONCommand(t, a, []string{"show", third.ID}, &shown)
+	if shown.Issue.Title != "Third" {
+		t.Fatalf("expected %s to still be Third after reopen, got %q", third.ID, shown.Issue.Title)
+	}
+}
+
+// After a gap opens up, a new child takes the next number after the highest
+// existing one rather than colliding with a sibling.
+func TestCreateChildAfterDeleteUsesNextFreeNumber(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var epic ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Epic", "--type", "epic"}, &epic)
+		var first ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "First", "--parent", epic.ID}, &first)
+		runJSONCommand[ait.Issue](t, a, []string{"create", "--title", "Second", "--parent", epic.ID}, nil)
+		runJSONCommand[map[string]any](t, a, []string{"delete", first.ID, "--force"}, nil)
+
+		var created ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Third", "--parent", epic.ID}, &created)
+		if created.ID != epic.ID+".3" {
+			t.Fatalf("expected new child %s.3, got %s", epic.ID, created.ID)
+		}
+	})
+}
+
 func TestUpdateRefusesEmptyDescription(t *testing.T) {
 	testApp(t, func(ctx context.Context, a *ait.App) {
 		var created ait.IssueRef

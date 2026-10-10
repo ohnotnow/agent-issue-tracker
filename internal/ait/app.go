@@ -208,8 +208,8 @@ func (a *App) runCreate(ctx context.Context, args []string) error {
 			return err
 		}
 	} else {
-		var siblingCount int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM issues WHERE parent_id = ?`, parentInternalID).Scan(&siblingCount); err != nil {
+		childNum, err := nextChildNumber(ctx, tx, parentInternalID)
+		if err != nil {
 			return err
 		}
 
@@ -217,7 +217,7 @@ func (a *App) runCreate(ctx context.Context, args []string) error {
 		if err := tx.QueryRowContext(ctx, `SELECT public_id FROM issues WHERE id = ?`, parentInternalID).Scan(&parentPublicID); err != nil {
 			return err
 		}
-		publicID = fmt.Sprintf("%s.%d", parentPublicID, siblingCount)
+		publicID = fmt.Sprintf("%s.%d", parentPublicID, childNum)
 	}
 
 	if _, err := tx.ExecContext(ctx, `UPDATE issues SET public_id = ? WHERE id = ?`, publicID, internalID); err != nil {

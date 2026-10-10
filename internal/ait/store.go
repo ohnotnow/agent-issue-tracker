@@ -8,6 +8,7 @@ import (
 	_ "modernc.org/sqlite"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -1258,9 +1259,24 @@ func syncPublicIDs(ctx context.Context, db *sql.DB, prefix string, forceRoot boo
 			rewritten++
 		}
 
-		for idx, childID := range children[issueID] {
-			childPublicID := fmt.Sprintf("%s.%d", expected, idx+1)
-			if err := assign(childID, childPublicID); err != nil {
+		// A child keeps the number it was given at create time, so deleting a
+		// sibling never shifts the others. Only children without a number yet
+		// (legacy upgrades) are numbered, after the highest one in use.
+		kids := children[issueID]
+		numbers := make([]int, len(kids))
+		highest := 0
+		for idx, childID := range kids {
+			if n, ok := childNumber(nodes[childID].publicID.String); ok {
+				numbers[idx] = n
+				highest = max(highest, n)
+			}
+		}
+		for idx, childID := range kids {
+			if numbers[idx] == 0 {
+				highest++
+				numbers[idx] = highest
+			}
+			if err := assign(childID, fmt.Sprintf("%s.%d", expected, numbers[idx])); err != nil {
 				return err
 			}
 		}
@@ -1289,4 +1305,42 @@ func syncPublicIDs(ctx context.Context, db *sql.DB, prefix string, forceRoot boo
 		return 0, err
 	}
 	return rewritten, nil
+}
+
+// childNumber returns the trailing ".N" of a child's public ID.
+func childNumber(publicID string) (int, bool) {
+	dot := strings.LastIndex(publicID, ".")
+	if dot < 0 {
+		return 0, false
+	}
+	n, err := strconv.Atoi(publicID[dot+1:])
+	if err != nil || n < 1 {
+		return 0, false
+	}
+	return n, true
+}
+
+// nextChildNumber returns the number for a new child of parentInternalID:
+// one past the highest in use, so gaps left by deletes are never refilled.
+func nextChildNumber(ctx context.Context, tx *sql.Tx, parentInternalID any) (int, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT public_id FROM issues WHERE parent_id = ? AND public_id IS NOT NULL`, parentInternalID)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	highest := 0
+	for rows.Next() {
+		var publicID string
+		if err := rows.Scan(&publicID); err != nil {
+			return 0, err
+		}
+		if n, ok := childNumber(publicID); ok {
+			highest = max(highest, n)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	return highest + 1, nil
 }

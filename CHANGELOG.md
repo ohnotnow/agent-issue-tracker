@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.1] - 2026-10-10
+
+### Fixed
+- Child IDs no longer shift when a sibling is deleted. A child's `.N` suffix was never stored for good: every time the database was opened, each parent's children were renumbered `.1`, `.2`, `.3` in creation order. That was harmless while children only ever closed or got cancelled, but after `ait delete <epic>.1 --force`, the old `.2` quietly became `.1` and `.3` became `.2`. Any note, commit message or other issue that mentioned `.2` then pointed at a different issue, with no warning. A child now keeps the number it was given at creation, and deleting a sibling just leaves a gap (`.2`, `.3`, `.4`). Databases that have already had a child deleted were renumbered at the time, and that can't be undone; IDs are stable from this release onwards.
+- Creating a child in the same process as a delete could fail with `UNIQUE constraint failed: issues.public_id`, because the new child's number came from counting its siblings, and after a gap that count matched a number already in use. New children now take one past the highest number in use. Ordinary CLI use never hit this, because the renumbering on open (above) closed the gap first.
+
 ## [1.16.0] - 2026-09-19
 
 ### Added
