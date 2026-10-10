@@ -273,10 +273,10 @@ func currentSchemaVersion(ctx context.Context, db *sql.DB) (int, error) {
 	return version, nil
 }
 
-// setSchemaVersion records the current schema version. Called outside
-// the migration transaction so it works with both fresh and existing DBs.
-func setSchemaVersion(ctx context.Context, db *sql.DB, version int) error {
-	_, err := db.ExecContext(ctx,
+// setSchemaVersion records the schema version inside a migration's own
+// transaction, inserting the row on a fresh or pre-versioning database.
+func setSchemaVersion(ctx context.Context, tx *sql.Tx, version int) error {
+	_, err := tx.ExecContext(ctx,
 		`INSERT INTO schema_version (id, version, updated_at)
 		 VALUES (1, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET version = excluded.version, updated_at = excluded.updated_at`,
@@ -286,7 +286,8 @@ func setSchemaVersion(ctx context.Context, db *sql.DB, version int) error {
 }
 
 // runMigrations applies all pending migrations in order. Each migration
-// runs in its own transaction for isolation.
+// runs in its own transaction, which also records its version, so a failure
+// leaves the database at the last migration that succeeded.
 func runMigrations(ctx context.Context, db *sql.DB) error {
 	// Ensure the schema_version table exists before anything else.
 	if _, err := db.ExecContext(ctx,
@@ -308,26 +309,46 @@ func runMigrations(ctx context.Context, db *sql.DB) error {
 		if m.version <= current {
 			continue
 		}
-		tx, err := db.BeginTx(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("migration %d (%s): begin tx: %w", m.version, m.description, err)
-		}
-		if err := m.apply(ctx, tx); err != nil {
-			tx.Rollback()
+		if err := applyMigration(ctx, db, m); err != nil {
 			return fmt.Errorf("migration %d (%s): %w", m.version, m.description, err)
 		}
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("migration %d (%s): commit: %w", m.version, m.description, err)
-		}
+	}
+	return nil
+}
+
+// applyMigration runs one migration and records its version in the same
+// transaction. Several processes can open an old database at once, so it
+// takes the write lock first and then rechecks the version: a process that
+// lost the race skips the migration rather than applying it twice.
+func applyMigration(ctx context.Context, db *sql.DB, m migration) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	// A write (even one matching no rows) takes the lock before any read,
+	// so the version read below cannot be a stale snapshot.
+	if _, err := tx.ExecContext(ctx, `UPDATE schema_version SET updated_at = updated_at WHERE id = 1`); err != nil {
+		return err
+	}
+	var applied int
+	err = tx.QueryRowContext(ctx, `SELECT version FROM schema_version WHERE id = 1`).Scan(&applied)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if applied >= m.version {
+		return nil
 	}
 
-	// Record the final version (handles both fresh DB and upgrades).
-	latest := migrations[len(migrations)-1].version
-	if latest > current {
-		if err := setSchemaVersion(ctx, db, latest); err != nil {
-			return err
-		}
+	if err := m.apply(ctx, tx); err != nil {
+		return err
 	}
-
+	if err := setSchemaVersion(ctx, tx, m.version); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
 	return nil
 }

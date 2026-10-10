@@ -66,7 +66,7 @@ claude/                     Skills and agent docs for Claude Code integration
 
 ## Schema Migrations
 
-Seven numbered migrations (baseline, claim fields, initiative type, flush history tables, shown-by-session columns, issue aliases, last child number). Append-only, one transaction per step. Also handles legacy TEXT-ID schema upgrade.
+Seven numbered migrations (baseline, claim fields, initiative type, flush history tables, shown-by-session columns, issue aliases, last child number). Append-only, one transaction per step; each step records its own version in that transaction and rechecks it after taking the write lock, so a failure resumes cleanly and concurrent opens apply each step once. Also handles legacy TEXT-ID schema upgrade.
 
 ## Status
 

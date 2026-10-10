@@ -2177,6 +2177,116 @@ func TestMigrationsAreIdempotent(t *testing.T) {
 	}
 }
 
+// rewindSchema builds a database at the latest schema, then runs stmts and
+// records version as if the later migrations had not been applied yet.
+func rewindSchema(t *testing.T, version int, stmts ...string) string {
+	t.Helper()
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "rewound.db")
+	a, err := ait.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	a.Close()
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	defer db.Close()
+	for _, stmt := range append(stmts, fmt.Sprintf(`UPDATE schema_version SET version = %d WHERE id = 1`, version)) {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	return dbPath
+}
+
+func schemaVersion(t *testing.T, dbPath string) int {
+	t.Helper()
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	defer db.Close()
+	var version int
+	if err := db.QueryRow(`SELECT version FROM schema_version WHERE id = 1`).Scan(&version); err != nil {
+		t.Fatalf("read schema version: %v", err)
+	}
+	return version
+}
+
+// A failed migration must not take the ones before it down with it: each
+// step records its own version, so a retry resumes after the last success.
+func TestFailedMigrationKeepsEarlierStepsRecorded(t *testing.T) {
+	ctx := context.Background()
+	// Back at 5 with migration 6 undone, but migration 7's column left in
+	// place so that 7 fails.
+	dbPath := rewindSchema(t, 5, `DROP TABLE issue_aliases`)
+
+	if _, err := ait.Open(ctx, dbPath); err == nil {
+		t.Fatal("expected migration 7 to fail")
+	}
+	if got := schemaVersion(t, dbPath); got != 6 {
+		t.Fatalf("expected migration 6 to be recorded, got version %d", got)
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	if _, err := db.Exec(`ALTER TABLE issues DROP COLUMN last_child_number`); err != nil {
+		t.Fatalf("drop column: %v", err)
+	}
+	db.Close()
+
+	a, err := ait.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("retry should resume at migration 7, got: %v", err)
+	}
+	a.Close()
+	if got := schemaVersion(t, dbPath); got != 7 {
+		t.Fatalf("expected version 7 after retry, got %d", got)
+	}
+}
+
+// Several agents starting at once after an upgrade all see migrations
+// pending; only one may apply each, and the rest must open cleanly.
+func TestConcurrentOpensApplyEachMigrationOnce(t *testing.T) {
+	ctx := context.Background()
+	for round := 0; round < 5; round++ {
+		dbPath := rewindSchema(t, 6, `ALTER TABLE issues DROP COLUMN last_child_number`)
+
+		const agents = 8
+		errs := make([]error, agents)
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for i := range errs {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				a, err := ait.Open(ctx, dbPath)
+				if err == nil {
+					a.Close()
+				}
+				errs[i] = err
+			}()
+		}
+		close(start)
+		wg.Wait()
+
+		for i, err := range errs {
+			if err != nil {
+				t.Fatalf("round %d: agent %d failed to open: %v", round, i, err)
+			}
+		}
+		if got := schemaVersion(t, dbPath); got != 7 {
+			t.Fatalf("round %d: expected version 7, got %d", round, got)
+		}
+	}
+}
+
 // --- Export command tests ---
 
 func TestExportEpicWithChildren(t *testing.T) {
