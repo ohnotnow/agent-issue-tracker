@@ -1327,12 +1327,15 @@ func childNumber(publicID string) (int, bool) {
 	return n, true
 }
 
-// nextChildPublicID returns the public ID for a new child of
-// parentInternalID: one past the highest number in use, counting the old IDs
-// of children that moved away, so a freed number is never handed out again.
+// nextChildPublicID allocates the public ID for a new child of
+// parentInternalID: one past the highest number the parent has ever handed
+// out, so a number freed by a delete or a move is never reused. The parent
+// records that number in last_child_number; the scan of surviving children
+// and aliases covers numbers handed out before the column existed.
 func nextChildPublicID(ctx context.Context, tx *sql.Tx, parentInternalID int64) (string, error) {
 	var parentPublicID string
-	if err := tx.QueryRowContext(ctx, `SELECT public_id FROM issues WHERE id = ?`, parentInternalID).Scan(&parentPublicID); err != nil {
+	var highest int
+	if err := tx.QueryRowContext(ctx, `SELECT public_id, last_child_number FROM issues WHERE id = ?`, parentInternalID).Scan(&parentPublicID, &highest); err != nil {
 		return "", err
 	}
 
@@ -1347,7 +1350,6 @@ func nextChildPublicID(ctx context.Context, tx *sql.Tx, parentInternalID int64) 
 	}
 	defer rows.Close()
 
-	highest := 0
 	for rows.Next() {
 		var publicID string
 		if err := rows.Scan(&publicID); err != nil {
@@ -1362,6 +1364,9 @@ func nextChildPublicID(ctx context.Context, tx *sql.Tx, parentInternalID int64) 
 		}
 	}
 	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE issues SET last_child_number = ? WHERE id = ?`, highest+1, parentInternalID); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("%s%d", stem, highest+1), nil

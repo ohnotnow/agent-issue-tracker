@@ -47,7 +47,7 @@ claude/                     Skills and agent docs for Claude Code integration
 ## Key Invariants
 
 - Initiatives cannot have parents; epics can only be children of initiatives; tasks can only be children of epics or other tasks.
-- Child IDs are assigned once (one past the highest number in use, counting aliases) and never renumbered; deletes leave gaps.
+- Child IDs are assigned once (one past the highest number the parent has ever handed out, kept in `issues.last_child_number`) and never renumbered or reused; deletes leave gaps.
 - `update --parent <id>` moves an issue and its subtree to new IDs (`--parent ""` makes it a root); the old IDs go into `issue_aliases` and still resolve everywhere. `show <old-id>` sets `moved_from`.
 - `ready` returns open/in_progress issues with no non-closed blockers, ordered by priority then creation time.
 - `list` hides closed/cancelled unless `--all` or explicit `--status`.
@@ -66,7 +66,7 @@ claude/                     Skills and agent docs for Claude Code integration
 
 ## Schema Migrations
 
-Six numbered migrations (baseline, claim fields, initiative type, flush history tables, shown-by-session columns, issue aliases). Append-only, one transaction per step. Also handles legacy TEXT-ID schema upgrade.
+Seven numbered migrations (baseline, claim fields, initiative type, flush history tables, shown-by-session columns, issue aliases, last child number). Append-only, one transaction per step. Also handles legacy TEXT-ID schema upgrade.
 
 ## Status
 

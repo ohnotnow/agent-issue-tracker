@@ -237,6 +237,18 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version:     7,
+		description: "remember the highest child number each parent has handed out",
+		apply: func(ctx context.Context, tx *sql.Tx) error {
+			// Starts at 0: nextChildPublicID still scans surviving children
+			// and aliases, which covers everything allocated before this.
+			if _, err := tx.ExecContext(ctx, `ALTER TABLE issues ADD COLUMN last_child_number INTEGER NOT NULL DEFAULT 0;`); err != nil {
+				return fmt.Errorf("migration 7: %w", err)
+			}
+			return nil
+		},
+	},
 }
 
 // currentSchemaVersion returns the version recorded in schema_version,

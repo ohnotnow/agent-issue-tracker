@@ -3503,6 +3503,54 @@ func TestCreateChildAfterDeleteUsesNextFreeNumber(t *testing.T) {
 	})
 }
 
+// Deleting the only child leaves no sibling to remember its number, so the
+// parent must, and must keep remembering it across a reopen.
+func TestDeletingOnlyChildDoesNotFreeItsNumber(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "only-child.db")
+
+	a, err := ait.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	var epic, only ait.Issue
+	runJSONCommand(t, a, []string{"create", "--title", "Epic", "--type", "epic"}, &epic)
+	runJSONCommand(t, a, []string{"create", "--title", "Only", "--parent", epic.ID}, &only)
+	runJSONCommand[map[string]any](t, a, []string{"delete", only.ID, "--force"}, nil)
+	a.Close()
+
+	a, err = ait.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("reopen failed: %v", err)
+	}
+	defer a.Close()
+
+	var created ait.IssueRef
+	runJSONCommand(t, a, []string{"create", "--title", "Replacement", "--parent", epic.ID}, &created)
+	if created.ID != epic.ID+".2" {
+		t.Fatalf("expected %s.2, got %s", epic.ID, created.ID)
+	}
+	if err := runExpectError(t, a, []string{"show", only.ID}); err == nil {
+		t.Fatalf("expected deleted %s to stay not found", only.ID)
+	}
+}
+
+func TestDeletingHighestChildDoesNotFreeItsNumber(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var epic, second ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Epic", "--type", "epic"}, &epic)
+		runJSONCommand[ait.Issue](t, a, []string{"create", "--title", "First", "--parent", epic.ID}, nil)
+		runJSONCommand(t, a, []string{"create", "--title", "Second", "--parent", epic.ID}, &second)
+		runJSONCommand[map[string]any](t, a, []string{"delete", second.ID, "--force"}, nil)
+
+		var created ait.IssueRef
+		runJSONCommand(t, a, []string{"create", "--title", "Third", "--parent", epic.ID}, &created)
+		if created.ID != epic.ID+".3" {
+			t.Fatalf("expected %s.3, got %s", epic.ID, created.ID)
+		}
+	})
+}
+
 func TestUpdateRefusesEmptyDescription(t *testing.T) {
 	testApp(t, func(ctx context.Context, a *ait.App) {
 		var created ait.IssueRef
@@ -3891,6 +3939,23 @@ func TestDeletingMovedIssueRemovesItsOldIDs(t *testing.T) {
 
 		if err := runExpectError(t, a, []string{"show", task.ID}); err == nil {
 			t.Fatal("expected the old ID to stop resolving once the issue is deleted")
+		}
+	})
+}
+
+// The deleted issue's alias went with it, so only the old parent's own
+// record can stop the old number being handed out again.
+func TestDeletingMovedIssueDoesNotFreeItsOldNumber(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		from, to, task, _ := moveFixture(t, a)
+		var moved ait.IssueRef
+		runJSONCommand(t, a, []string{"update", task.ID, "--parent", to.ID}, &moved)
+		runJSONCommand[map[string]any](t, a, []string{"delete", moved.ID, "--force", "--cascade"}, nil)
+
+		var created ait.IssueRef
+		runJSONCommand(t, a, []string{"create", "--title", "Newcomer", "--parent", from.ID}, &created)
+		if created.ID != from.ID+".2" {
+			t.Fatalf("expected %s.2, got %s", from.ID, created.ID)
 		}
 	})
 }
