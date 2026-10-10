@@ -3,17 +3,25 @@ package ait
 import (
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 )
 
-const editorCreateHelp = `# Enter issue details. First line is the title, everything after
-# a blank line is the description. Lines starting with # are ignored.
+// editorScissors separates the issue from the help text, as in git commit
+// --cleanup=scissors: everything from this line down is ignored, so lines
+// above it starting with # (Markdown headings, shell comments) are kept.
+const editorScissors = "# ------------------------ >8 ------------------------"
+
+const editorCreateHelp = editorScissors + `
+# Enter the title on the first line and the description after it.
+# Do not change or remove the line above; everything below it is ignored.
 # Save and close the editor to create the issue; leave it empty to abort.
 `
 
-const editorUpdateHelp = `# Edit issue details. First line is the title, everything after
-# a blank line is the description. Lines starting with # are ignored.
-# Save and close the editor to apply the changes; leave it empty to abort.
+const editorUpdateHelp = editorScissors + `
+# Edit the title on the first line and the description after it.
+# Do not change or remove the line above; everything below it is ignored.
+# Save and close the editor to apply the changes; clear the title to abort.
 `
 
 // EditIssueMessage opens $EDITOR (falling back to vi) with a template and
@@ -33,22 +41,7 @@ func EditIssueMessage(initialTitle, initialDescription string) (title, descripti
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
 
-	var body strings.Builder
-	if initialTitle == "" && initialDescription == "" {
-		body.WriteString("\n")
-		body.WriteString(editorCreateHelp)
-	} else {
-		body.WriteString(initialTitle)
-		body.WriteString("\n\n")
-		body.WriteString(initialDescription)
-		if initialDescription != "" {
-			body.WriteString("\n")
-		}
-		body.WriteString("\n")
-		body.WriteString(editorUpdateHelp)
-	}
-
-	if _, err := tmp.WriteString(body.String()); err != nil {
+	if _, err := tmp.WriteString(editorTemplate(initialTitle, initialDescription)); err != nil {
 		tmp.Close()
 		return "", "", &CLIError{Code: "io", Message: "cannot write temp file: " + err.Error(), ExitCode: 73}
 	}
@@ -71,42 +64,51 @@ func EditIssueMessage(initialTitle, initialDescription string) (title, descripti
 	return parseEditorMessage(string(data))
 }
 
+// editorTemplate is the file the editor opens: the issue's title and
+// description (empty when creating) followed by the help text.
+func editorTemplate(title, description string) string {
+	var body strings.Builder
+	if title == "" && description == "" {
+		body.WriteString("\n")
+		body.WriteString(editorCreateHelp)
+		return body.String()
+	}
+	body.WriteString(title)
+	body.WriteString("\n\n")
+	body.WriteString(description)
+	if description != "" {
+		body.WriteString("\n")
+	}
+	body.WriteString("\n")
+	body.WriteString(editorUpdateHelp)
+	return body.String()
+}
+
 // parseEditorMessage extracts a title and description from editor output.
-// The first non-comment, non-blank line is the title. Everything after the
-// next blank line (skipping comments) is the description.
+// Everything from the scissors line down is dropped. The first non-blank
+// line is the title and the rest, trimmed, is the description. If the
+// scissors line was removed, every line starting with # is dropped instead,
+// as before it existed, so the help text never lands in the description.
 func parseEditorMessage(raw string) (title, description string, err error) {
-	var titleLine string
-	var descLines []string
-	pastTitle := false
-	pastBlank := false
-
-	for _, line := range strings.Split(raw, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
-			continue
-		}
-
-		if !pastTitle {
-			trimmed := strings.TrimSpace(line)
-			if trimmed != "" {
-				titleLine = trimmed
-				pastTitle = true
-			}
-			continue
-		}
-
-		if !pastBlank {
-			if strings.TrimSpace(line) == "" {
-				pastBlank = true
-			}
-			continue
-		}
-
-		descLines = append(descLines, line)
+	lines := strings.Split(raw, "\n")
+	if cut := slices.IndexFunc(lines, func(line string) bool {
+		return strings.TrimSpace(line) == editorScissors
+	}); cut >= 0 {
+		lines = lines[:cut]
+	} else {
+		lines = slices.DeleteFunc(lines, func(line string) bool {
+			return strings.HasPrefix(strings.TrimSpace(line), "#")
+		})
 	}
 
-	if titleLine == "" {
+	for i, line := range lines {
+		if title = strings.TrimSpace(line); title != "" {
+			description = strings.TrimSpace(strings.Join(lines[i+1:], "\n"))
+			break
+		}
+	}
+	if title == "" {
 		return "", "", &CLIError{Code: "validation", Message: "aborted: empty title", ExitCode: 1}
 	}
-
-	return titleLine, strings.TrimSpace(strings.Join(descLines, "\n")), nil
+	return title, description, nil
 }

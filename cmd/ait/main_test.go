@@ -2751,6 +2751,32 @@ func TestUpdateHumanEditsTitleAndDescription(t *testing.T) {
 	})
 }
 
+// Tweaking just the title in the editor must leave a Markdown body exactly
+// as it was, headings and code-block comments included.
+func TestUpdateHumanTitleTweakKeepsMarkdownBody(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		body := "## Acceptance criteria\n\n- It works\n\n```sh\n# install first\nmake\n```"
+		var created ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Old title", "--description", body}, &created)
+
+		script := filepath.Join(t.TempDir(), "editor.sh")
+		retitle := "#!/bin/sh\n{ echo 'New title'; tail -n +2 \"$1\"; } > \"$1.tmp\" && mv \"$1.tmp\" \"$1\"\n"
+		if err := os.WriteFile(script, []byte(retitle), 0o755); err != nil {
+			t.Fatalf("write script: %v", err)
+		}
+		t.Setenv("EDITOR", script)
+
+		var updated ait.Issue
+		runJSONCommand(t, a, []string{"update", created.ID, "--human", "--long"}, &updated)
+		if updated.Title != "New title" {
+			t.Fatalf("expected title %q, got %q", "New title", updated.Title)
+		}
+		if updated.Description != body {
+			t.Fatalf("expected body unchanged:\n%s\ngot:\n%s", body, updated.Description)
+		}
+	})
+}
+
 func TestUpdateHumanRejectsCombinationWithTitleFlag(t *testing.T) {
 	testApp(t, func(ctx context.Context, a *ait.App) {
 		runJSONCommand[map[string]any](t, a, []string{"init", "--prefix", "human"}, nil)

@@ -73,3 +73,36 @@ func TestParseEditorMessage(t *testing.T) {
 		})
 	}
 }
+
+// Opening an issue in the editor and saving it untouched must give back
+// exactly what was there: Markdown headings, comments inside code blocks
+// and titles starting with # are content, not instructions.
+func TestEditorTemplateRoundTripsUnchanged(t *testing.T) {
+	tests := []struct {
+		name, title, desc string
+	}{
+		{"headings", "Fix the login bug", "## Acceptance criteria\n\nKeep the content."},
+		{"fenced comment", "Document setup", "Run:\n\n```sh\n# install deps first\nmake\n```"},
+		{"indented hash", "Tidy config", "Example:\n\n    # not a comment"},
+		{"hash title", "#42 regression in export", "Body"},
+		{"title only", "Just a title", ""},
+		{"line straight after title", "Title", "No blank line before me"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			title, desc, err := parseEditorMessage(editorTemplate(tt.title, tt.desc))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if title != tt.title || desc != tt.desc {
+				t.Fatalf("got (%q, %q), want (%q, %q)", title, desc, tt.title, tt.desc)
+			}
+		})
+	}
+}
+
+func TestEditorCreateTemplateWithNothingEnteredAborts(t *testing.T) {
+	if _, _, err := parseEditorMessage(editorTemplate("", "")); err == nil {
+		t.Fatal("expected an untouched create template to abort")
+	}
+}
