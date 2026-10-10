@@ -678,12 +678,10 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 		if agentName == "" {
 			return &CLIError{Code: "validation", Message: "agent name is required", ExitCode: 65}
 		}
+		// Checked early so a claimed issue is refused before any move; the
+		// conditional write below settles a race with another agent.
 		if current.ClaimedBy != nil {
-			return &CLIError{
-				Code:     "conflict",
-				Message:  fmt.Sprintf("issue %s is already claimed by %s", current.ID, *current.ClaimedBy),
-				ExitCode: 65,
-			}
+			return alreadyClaimedError(current.ID, *current.ClaimedBy)
 		}
 		sets = append(sets, "claimed_by = ?", "claimed_at = ?")
 		params = append(params, agentName, NowUTC())
@@ -703,11 +701,17 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 		params = append(params, NowUTC(), internalID)
 
 		query := "UPDATE issues SET " + strings.Join(sets, ", ") + " WHERE id = ?"
+		if claimRequested {
+			query += " AND claimed_by IS NULL"
+		}
 		result, err := a.db.ExecContext(ctx, query, params...)
 		if err != nil {
 			return err
 		}
 		if rows, _ := result.RowsAffected(); rows == 0 {
+			if claimRequested {
+				return a.claimConflict(ctx, internalID)
+			}
 			return &CLIError{Code: "not_found", Message: fmt.Sprintf("issue %s not found", id), ExitCode: 66}
 		}
 	}
@@ -806,25 +810,18 @@ func (a *App) runClaim(ctx context.Context, args []string) error {
 		return &CLIError{Code: "validation", Message: "agent name is required", ExitCode: 65}
 	}
 
-	current, err := a.fetchIssueByInternalID(ctx, internalID)
-	if err != nil {
-		return err
-	}
-	if current.ClaimedBy != nil {
-		return &CLIError{
-			Code:     "conflict",
-			Message:  fmt.Sprintf("issue %s is already claimed by %s", current.ID, *current.ClaimedBy),
-			ExitCode: 65,
-		}
-	}
-
+	// One conditional write, so two agents racing for the same issue cannot
+	// both pass a check and then both write.
 	now := NowUTC()
-	_, err = a.db.ExecContext(ctx,
-		`UPDATE issues SET claimed_by = ?, claimed_at = ?, updated_at = ? WHERE id = ?`,
+	result, err := a.db.ExecContext(ctx,
+		`UPDATE issues SET claimed_by = ?, claimed_at = ?, updated_at = ? WHERE id = ? AND claimed_by IS NULL`,
 		agentName, now, now, internalID,
 	)
 	if err != nil {
 		return err
+	}
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return a.claimConflict(ctx, internalID)
 	}
 
 	updated, err := a.fetchIssueByInternalID(ctx, internalID)
@@ -835,6 +832,28 @@ func (a *App) runClaim(ctx context.Context, args []string) error {
 		return PrintJSON(updated)
 	}
 	return PrintJSON(NewIssueRef(updated))
+}
+
+func alreadyClaimedError(issueID, claimedBy string) *CLIError {
+	return &CLIError{
+		Code:     "conflict",
+		Message:  fmt.Sprintf("issue %s is already claimed by %s", issueID, claimedBy),
+		ExitCode: 65,
+	}
+}
+
+// claimConflict explains a conditional claim that changed no rows: another
+// agent got there first, or the issue has gone (fetch reports not_found).
+func (a *App) claimConflict(ctx context.Context, internalID int64) error {
+	current, err := a.fetchIssueByInternalID(ctx, internalID)
+	if err != nil {
+		return err
+	}
+	claimedBy := "another agent"
+	if current.ClaimedBy != nil {
+		claimedBy = *current.ClaimedBy
+	}
+	return alreadyClaimedError(current.ID, claimedBy)
 }
 
 func (a *App) runUnclaim(ctx context.Context, args []string) error {

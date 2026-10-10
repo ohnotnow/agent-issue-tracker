@@ -7,8 +7,10 @@ import (
 	"errors"
 	"io"
 	"os"
+	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1967,6 +1969,93 @@ func TestClaimAlreadyClaimedReturnsConflict(t *testing.T) {
 		if !strings.Contains(err.Error(), "already claimed") {
 			t.Fatalf("expected 'already claimed' message, got: %s", err.Error())
 		}
+	})
+}
+
+// raceForClaim has agents on separate connections to one database file race
+// to claim the same issue, round after round, and checks exactly one wins
+// each time while the rest get a conflict. With setsPriority, each agent's
+// args also set priority P<agent%5>, and only the winner's may stick.
+func raceForClaim(t *testing.T, setsPriority bool, claimArgs func(id string, agent int) []string) {
+	t.Helper()
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "race.db")
+	const agents, rounds = 8, 10
+
+	apps := make([]*ait.App, agents)
+	for i := range apps {
+		a, err := ait.Open(ctx, dbPath)
+		if err != nil {
+			t.Fatalf("Open failed: %v", err)
+		}
+		t.Cleanup(func() { a.Close() })
+		apps[i] = a
+	}
+
+	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer devNull.Close()
+
+	for round := 0; round < rounds; round++ {
+		var created ait.IssueRef
+		runJSONCommand(t, apps[0], []string{"create", "--title", fmt.Sprintf("Contested %d", round)}, &created)
+
+		errs := make([]error, agents)
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		origStdout := os.Stdout
+		os.Stdout = devNull
+		for i, a := range apps {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				errs[i] = a.Run(ctx, claimArgs(created.ID, i))
+			}()
+		}
+		close(start)
+		wg.Wait()
+		os.Stdout = origStdout
+
+		winner := -1
+		for i, err := range errs {
+			var cliErr *ait.CLIError
+			switch {
+			case err == nil && winner >= 0:
+				t.Fatalf("round %d: agents %d and %d both claimed %s", round, winner, i, created.ID)
+			case err == nil:
+				winner = i
+			case !errors.As(err, &cliErr) || cliErr.Code != "conflict":
+				t.Fatalf("round %d: agent %d: expected a conflict, got %v", round, i, err)
+			}
+		}
+		if winner < 0 {
+			t.Fatalf("round %d: nobody claimed %s", round, created.ID)
+		}
+
+		var shown ait.ShowResponse
+		runJSONCommand(t, apps[0], []string{"show", created.ID}, &shown)
+		want := fmt.Sprintf("agent-%d", winner)
+		if shown.Issue.ClaimedBy == nil || *shown.Issue.ClaimedBy != want {
+			t.Fatalf("round %d: expected claim by %s, got %v", round, want, shown.Issue.ClaimedBy)
+		}
+		if wantPriority := fmt.Sprintf("P%d", winner%5); setsPriority && shown.Issue.Priority != wantPriority {
+			t.Fatalf("round %d: a losing agent changed priority: want %s, got %s", round, wantPriority, shown.Issue.Priority)
+		}
+	}
+}
+
+func TestConcurrentClaimsHaveOneWinner(t *testing.T) {
+	raceForClaim(t, false, func(id string, agent int) []string {
+		return []string{"claim", id, fmt.Sprintf("agent-%d", agent)}
+	})
+}
+
+func TestConcurrentUpdateClaimsHaveOneWinner(t *testing.T) {
+	raceForClaim(t, true, func(id string, agent int) []string {
+		return []string{"update", id, "--claim", fmt.Sprintf("agent-%d", agent), "--priority", fmt.Sprintf("P%d", agent%5)}
 	})
 }
 
