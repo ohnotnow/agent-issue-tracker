@@ -63,7 +63,7 @@ It's not designed to handle cross-team shared issues, work, projects.  The inter
 - `list` (`--type`, `--status`, `--priority`, `--parent`, `--all`, `--long`, `--human`, `--tree`)
 - `status`
 - `search`
-- `update` (`--title`, `--description`, `--status`, `--priority`)
+- `update` (`--title`, `--description`, `--status`, `--priority`, `--parent`)
 - `close` (`--cascade`, `--note`, `--reason` — alias for `--note`)
 - `reopen`
 - `cancel`
@@ -333,6 +333,8 @@ Public issue IDs are hierarchical:
 - first grandchild: `<prefix>-<sqid>.1.1`
 
 This makes parent-child structure visible directly in the identifier while keeping the root segment compact and readable.
+
+A child keeps its number for life: deleting a sibling leaves a gap rather than renumbering the others. Moving an issue with `ait update <id> --parent <new-parent>` (or `--parent ""` to make it a root) gives it and its children new IDs that match their new place. The old IDs are kept as aliases, so references in notes and commit messages still work: `ait show <old-id>` returns the issue with a `moved_from` field set to the ID you asked for. A freed number is never handed to a new issue.
 
 ## Custom Database Path
 

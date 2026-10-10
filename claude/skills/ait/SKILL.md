@@ -60,7 +60,14 @@ ait update <id> --description @spec.md # Replace the description (whole text, no
 ait update <id> --description - <<'EOF' # Or via heredoc on stdin
 Whole new description here.
 EOF
+ait update <id> --parent <epic-id>     # Move under another parent (children come too)
+ait update <id> --parent ""            # Make it a standalone root issue
 ```
+
+A move gives the issue and its children new IDs; the response shows the new
+one. Old IDs keep working everywhere, and `ait show <old-id>` returns the
+issue with `moved_from` set to the ID you asked for, so you can follow an old
+reference from a note or commit without any extra step.
 
 **Read before you write.** `ait show <id>` first, then `update`. The tool records which session showed an issue, and `update --title/--description` and `close --note` are refused (`unread` error) unless you showed it within the last hour. This is the same rule as reading a file before editing it, and it exists because an agent once overwrote a hand-written issue body without having looked at it. If the refusal says the show was too long ago, run `show` again and re-read it; your context may have been compacted since. `--dangerously-skip-read-check` overrides the guard and should almost never appear in your commands.
 
@@ -114,8 +121,9 @@ issues before deciding what to do.
 ait delete <id> --force             # permanently remove a single issue
 ait delete <id> --force --cascade   # remove the issue and its whole subtree
 ```
-`delete` is for genuine mistakes — a fat-fingered duplicate, a throwaway, an
-issue created against the wrong parent. It is **irreversible** and, unlike
+`delete` is for genuine mistakes — a fat-fingered duplicate, a throwaway. An
+issue created against the wrong parent should be moved with
+`update --parent` instead. It is **irreversible** and, unlike
 flush, records **nothing**: the issue, its notes, and its dependency links are
 gone for good. The response is `{ "deleted": [refs] }`, listing exactly what
 was removed.
@@ -193,6 +201,8 @@ IDs are auto-generated with the project prefix:
 
 The parent-child structure is visible directly in the identifier. For a full
 three-tier setup: `proj-abc` (initiative) -> `proj-abc.1` (epic) -> `proj-abc.1.1` (task).
+A child keeps its number for life, so gaps (`.1`, `.3`) just mean a sibling
+was deleted or moved away.
 
 ## Workflow Pattern
 

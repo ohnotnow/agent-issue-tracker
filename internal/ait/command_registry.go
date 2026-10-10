@@ -285,6 +285,8 @@ Flags:
   --description <text>   New description (@file reads a file, - reads stdin)
   --status <status>      New status (open, in_progress, closed, cancelled)
   --priority <P0-P4>     New priority
+  --parent <id>          Move the issue (and its children) under a new parent;
+                         --parent "" makes it a standalone root issue
   --claim <agent-name>   Claim the issue for an agent as part of the update
                          (fails if already claimed, like the claim command)
   --human                Open $EDITOR pre-filled with the current title and
@@ -295,6 +297,13 @@ Flags:
   --dangerously-skip-read-check
                          Rewrite an issue this session has not run 'show' on
                          (see "Guards" below)
+
+Moving:
+  A moved issue and its children get new IDs to match their new place, and
+  the response shows the new ID. The old IDs still work in every command:
+  'ait show <old-id>' returns the issue with "moved_from" set to the ID you
+  asked for. Moving under itself or one of its own children is refused, as
+  is any parent the type rules forbid (e.g. an epic under a task).
 
 Guards:
   An empty --description is refused. A new description shorter than half the
@@ -307,6 +316,8 @@ Examples:
   ait update PROJ-1 --title "Renamed issue"
   ait update PROJ-1 --status in_progress --priority P0
   ait update PROJ-1 --status in_progress --claim builder-agent
+  ait update PROJ-1.3 --parent PROJ-2
+  ait update PROJ-1.3 --parent ""
   ait update PROJ-1 --human
   ait edit PROJ-1 --human --priority P1
 `,

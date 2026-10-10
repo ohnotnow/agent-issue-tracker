@@ -137,6 +137,13 @@ func (a *App) resolveIssueID(ctx context.Context, key string) (int64, error) {
 		return 0, err
 	}
 
+	row = a.db.QueryRowContext(ctx, `SELECT issue_id FROM issue_aliases WHERE public_id = ?`, key)
+	if err := row.Scan(&internalID); err == nil {
+		return internalID, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+
 	row = a.db.QueryRowContext(ctx, `SELECT id FROM issues WHERE legacy_id = ?`, key)
 	if err := row.Scan(&internalID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1320,12 +1327,23 @@ func childNumber(publicID string) (int, bool) {
 	return n, true
 }
 
-// nextChildNumber returns the number for a new child of parentInternalID:
-// one past the highest in use, so gaps left by deletes are never refilled.
-func nextChildNumber(ctx context.Context, tx *sql.Tx, parentInternalID any) (int, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT public_id FROM issues WHERE parent_id = ? AND public_id IS NOT NULL`, parentInternalID)
+// nextChildPublicID returns the public ID for a new child of
+// parentInternalID: one past the highest number in use, counting the old IDs
+// of children that moved away, so a freed number is never handed out again.
+func nextChildPublicID(ctx context.Context, tx *sql.Tx, parentInternalID int64) (string, error) {
+	var parentPublicID string
+	if err := tx.QueryRowContext(ctx, `SELECT public_id FROM issues WHERE id = ?`, parentInternalID).Scan(&parentPublicID); err != nil {
+		return "", err
+	}
+
+	stem := parentPublicID + "."
+	rows, err := tx.QueryContext(ctx,
+		`SELECT public_id FROM issues WHERE parent_id = ? AND public_id IS NOT NULL
+		 UNION ALL
+		 SELECT public_id FROM issue_aliases WHERE substr(public_id, 1, length(?)) = ?`,
+		parentInternalID, stem, stem)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 	defer rows.Close()
 
@@ -1333,14 +1351,94 @@ func nextChildNumber(ctx context.Context, tx *sql.Tx, parentInternalID any) (int
 	for rows.Next() {
 		var publicID string
 		if err := rows.Scan(&publicID); err != nil {
-			return 0, err
+			return "", err
+		}
+		// Skip aliases of grandchildren: only "<parent>.N" counts.
+		if strings.Contains(strings.TrimPrefix(publicID, stem), ".") {
+			continue
 		}
 		if n, ok := childNumber(publicID); ok {
 			highest = max(highest, n)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return 0, err
+		return "", err
 	}
-	return highest + 1, nil
+	return fmt.Sprintf("%s%d", stem, highest+1), nil
+}
+
+// moveIssue re-parents an issue (newParentID nil makes it a root) and gives
+// it and its subtree new public IDs. The old IDs are kept as aliases so
+// references in notes and commits still resolve.
+func (a *App) moveIssue(ctx context.Context, internalID int64, newParentID *int64) error {
+	current, err := a.fetchIssueByInternalID(ctx, internalID)
+	if err != nil {
+		return err
+	}
+	descendants, err := a.fetchAllDescendants(ctx, internalID)
+	if err != nil {
+		return err
+	}
+	subtree := map[int64]string{internalID: current.ID}
+	for _, d := range descendants {
+		descID, err := a.resolveIssueID(ctx, d.ID)
+		if err != nil {
+			return err
+		}
+		subtree[descID] = d.ID
+	}
+
+	var rootID string
+	if newParentID == nil {
+		prefix, err := a.ensureProjectPrefix(ctx)
+		if err != nil {
+			return err
+		}
+		if rootID, err = RootPublicID(prefix, internalID); err != nil {
+			return err
+		}
+	} else {
+		if _, inSubtree := subtree[*newParentID]; inSubtree {
+			return &CLIError{Code: "validation", Message: fmt.Sprintf("cannot move %s under itself or one of its descendants", current.ID), ExitCode: 65}
+		}
+		parent, err := a.fetchIssueByInternalID(ctx, *newParentID)
+		if err != nil {
+			return err
+		}
+		if err := ValidateParentType(current.Type, parent.Type); err != nil {
+			return err
+		}
+	}
+
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if newParentID != nil {
+		if rootID, err = nextChildPublicID(ctx, tx, *newParentID); err != nil {
+			return err
+		}
+	}
+
+	now := NowUTC()
+	for id, oldID := range subtree {
+		newID := rootID + strings.TrimPrefix(oldID, current.ID)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO issue_aliases (public_id, issue_id, created_at) VALUES (?, ?, ?)`, oldID, id, now); err != nil {
+			return err
+		}
+		// Moving an issue back to where it was makes its old ID live again.
+		if _, err := tx.ExecContext(ctx, `DELETE FROM issue_aliases WHERE public_id = ?`, newID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE issues SET public_id = ? WHERE id = ?`, newID, id); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE issues SET parent_id = ?, updated_at = ? WHERE id = ?`, newParentID, now, internalID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }

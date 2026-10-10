@@ -150,7 +150,7 @@ func (a *App) runCreate(ctx context.Context, args []string) error {
 		return err
 	}
 	var parent *string
-	var parentInternalID any
+	var parentInternalID *int64
 	if strings.TrimSpace(*parentID) != "" {
 		parent = parentID
 		parentIssue, err := a.fetchIssue(ctx, *parent)
@@ -164,7 +164,7 @@ func (a *App) runCreate(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		parentInternalID = resolvedParentID
+		parentInternalID = &resolvedParentID
 	}
 
 	prefix, err := a.ensureProjectPrefix(ctx)
@@ -208,16 +208,10 @@ func (a *App) runCreate(ctx context.Context, args []string) error {
 			return err
 		}
 	} else {
-		childNum, err := nextChildNumber(ctx, tx, parentInternalID)
+		publicID, err = nextChildPublicID(ctx, tx, *parentInternalID)
 		if err != nil {
 			return err
 		}
-
-		var parentPublicID string
-		if err := tx.QueryRowContext(ctx, `SELECT public_id FROM issues WHERE id = ?`, parentInternalID).Scan(&parentPublicID); err != nil {
-			return err
-		}
-		publicID = fmt.Sprintf("%s.%d", parentPublicID, childNum)
 	}
 
 	if _, err := tx.ExecContext(ctx, `UPDATE issues SET public_id = ? WHERE id = ?`, publicID, internalID); err != nil {
@@ -277,13 +271,17 @@ func (a *App) runShow(ctx context.Context, args []string) error {
 		return err
 	}
 
-	return PrintJSON(ShowResponse{
+	resp := ShowResponse{
 		Issue:    iss,
 		Children: children,
 		Blockers: blockers,
 		Blocks:   blocks,
 		Notes:    notes,
-	})
+	}
+	if requested := strings.TrimSpace(args[0]); requested != iss.ID {
+		resp.MovedFrom = requested
+	}
+	return PrintJSON(resp)
 }
 
 func (a *App) runList(ctx context.Context, args []string) error {
@@ -559,12 +557,15 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 	// an empty heredoc or a missing variable, not a request to blank the body.
 	claimRequested := false
 	descriptionRequested := false
+	parentRequested := false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "claim":
 			claimRequested = true
 		case "description":
 			descriptionRequested = true
+		case "parent":
+			parentRequested = true
 		}
 	})
 
@@ -627,11 +628,24 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 			return err
 		}
 	}
-	if *parentID != "" {
-		if current.Type == "initiative" {
-			return &CLIError{Code: "validation", Message: "initiatives cannot have a parent", ExitCode: 65}
+	// --parent <id> moves the issue; --parent "" makes it a root. Moving to
+	// the parent it already has is a no-op.
+	var newParentID *int64
+	move := false
+	if parentRequested {
+		if strings.TrimSpace(*parentID) != "" {
+			resolved, err := a.resolveIssueID(ctx, *parentID)
+			if err != nil {
+				return err
+			}
+			newParentID = &resolved
 		}
-		return &CLIError{Code: "validation", Message: "changing parent is not supported once hierarchical ids are enabled", ExitCode: 65}
+		var currentParentID *int64
+		if err := a.db.QueryRowContext(ctx, `SELECT parent_id FROM issues WHERE id = ?`, internalID).Scan(&currentParentID); err != nil {
+			return err
+		}
+		move = (newParentID == nil) != (currentParentID == nil) ||
+			(newParentID != nil && *newParentID != *currentParentID)
 	}
 
 	var sets []string
@@ -674,20 +688,28 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 		sets = append(sets, "claimed_by = ?", "claimed_at = ?")
 		params = append(params, agentName, NowUTC())
 	}
-	if len(sets) == 0 {
+	if len(sets) == 0 && !parentRequested {
 		return &CLIError{Code: "validation", Message: "no fields were provided to update", ExitCode: 65}
 	}
 
-	sets = append(sets, "updated_at = ?")
-	params = append(params, NowUTC(), internalID)
-
-	query := "UPDATE issues SET " + strings.Join(sets, ", ") + " WHERE id = ?"
-	result, err := a.db.ExecContext(ctx, query, params...)
-	if err != nil {
-		return err
+	if move {
+		if err := a.moveIssue(ctx, internalID, newParentID); err != nil {
+			return err
+		}
 	}
-	if rows, _ := result.RowsAffected(); rows == 0 {
-		return &CLIError{Code: "not_found", Message: fmt.Sprintf("issue %s not found", id), ExitCode: 66}
+
+	if len(sets) > 0 {
+		sets = append(sets, "updated_at = ?")
+		params = append(params, NowUTC(), internalID)
+
+		query := "UPDATE issues SET " + strings.Join(sets, ", ") + " WHERE id = ?"
+		result, err := a.db.ExecContext(ctx, query, params...)
+		if err != nil {
+			return err
+		}
+		if rows, _ := result.RowsAffected(); rows == 0 {
+			return &CLIError{Code: "not_found", Message: fmt.Sprintf("issue %s not found", id), ExitCode: 66}
+		}
 	}
 
 	updated, err := a.fetchIssueByInternalID(ctx, internalID)

@@ -216,6 +216,27 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version:     6,
+		description: "keep old public IDs of moved issues as aliases",
+		apply: func(ctx context.Context, tx *sql.Tx) error {
+			statements := []string{
+				`CREATE TABLE issue_aliases (
+					public_id TEXT PRIMARY KEY,
+					issue_id INTEGER NOT NULL,
+					created_at TEXT NOT NULL,
+					FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+				);`,
+				`CREATE INDEX idx_issue_aliases_issue_id ON issue_aliases(issue_id);`,
+			}
+			for _, stmt := range statements {
+				if _, err := tx.ExecContext(ctx, stmt); err != nil {
+					return fmt.Errorf("migration 6: %w", err)
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // currentSchemaVersion returns the version recorded in schema_version,

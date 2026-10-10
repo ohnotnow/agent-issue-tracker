@@ -79,6 +79,9 @@ type ShowResponse struct {
 	Blockers []IssueRef `json:"blockers"`
 	Blocks   []IssueRef `json:"blocks"`
 	Notes    []Note     `json:"notes"`
+	// MovedFrom is the ID that was asked for, when it is an old ID of an
+	// issue that has since moved to a different parent.
+	MovedFrom string `json:"moved_from,omitempty"`
 }
 
 type DependencyTree struct {

@@ -3733,3 +3733,190 @@ func withStdin(t *testing.T, content string) {
 	os.Stdin = r
 	t.Cleanup(func() { os.Stdin = orig; r.Close() })
 }
+
+// moveFixture builds two epics, a task under the first with a child of its
+// own, and returns them for the move tests.
+func moveFixture(t *testing.T, a *ait.App) (from, to, task, sub ait.Issue) {
+	t.Helper()
+	runJSONCommand(t, a, []string{"create", "--title", "From", "--type", "epic"}, &from)
+	runJSONCommand(t, a, []string{"create", "--title", "To", "--type", "epic"}, &to)
+	runJSONCommand(t, a, []string{"create", "--title", "Task", "--parent", from.ID}, &task)
+	runJSONCommand(t, a, []string{"create", "--title", "Sub", "--parent", task.ID}, &sub)
+	return from, to, task, sub
+}
+
+func TestUpdateParentMovesIssueAndSubtree(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		from, to, task, sub := moveFixture(t, a)
+
+		var moved ait.IssueRef
+		runJSONCommand(t, a, []string{"update", task.ID, "--parent", to.ID}, &moved)
+		if moved.ID != to.ID+".1" {
+			t.Fatalf("expected moved task to be %s.1, got %s", to.ID, moved.ID)
+		}
+
+		var shown ait.ShowResponse
+		runJSONCommand(t, a, []string{"show", moved.ID}, &shown)
+		if shown.Issue.ParentID == nil || *shown.Issue.ParentID != to.ID {
+			t.Fatalf("expected parent %s, got %v", to.ID, shown.Issue.ParentID)
+		}
+		if len(shown.Children) != 1 || shown.Children[0].ID != to.ID+".1.1" || shown.Children[0].Title != sub.Title {
+			t.Fatalf("expected Sub to move along as %s.1.1, got %+v", to.ID, shown.Children)
+		}
+
+		runJSONCommand(t, a, []string{"show", from.ID}, &shown)
+		if len(shown.Children) != 0 {
+			t.Fatalf("expected %s to have no children after the move, got %+v", from.ID, shown.Children)
+		}
+	})
+}
+
+func TestUpdateParentEmptyMakesIssueStandalone(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		_, _, task, _ := moveFixture(t, a)
+
+		var moved ait.IssueRef
+		runJSONCommand(t, a, []string{"update", task.ID, "--parent", ""}, &moved)
+		if strings.Contains(moved.ID, ".") {
+			t.Fatalf("expected a root ID with no dots, got %s", moved.ID)
+		}
+
+		var shown ait.ShowResponse
+		runJSONCommand(t, a, []string{"show", moved.ID}, &shown)
+		if shown.Issue.ParentID != nil {
+			t.Fatalf("expected no parent, got %s", *shown.Issue.ParentID)
+		}
+		if len(shown.Children) != 1 || shown.Children[0].ID != moved.ID+".1" {
+			t.Fatalf("expected Sub to follow as %s.1, got %+v", moved.ID, shown.Children)
+		}
+	})
+}
+
+func TestShowOldIDAfterMoveReturnsIssueWithMovedFrom(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		_, to, task, sub := moveFixture(t, a)
+		runJSONCommand[ait.IssueRef](t, a, []string{"update", task.ID, "--parent", to.ID}, nil)
+
+		var shown ait.ShowResponse
+		runJSONCommand(t, a, []string{"show", task.ID}, &shown)
+		if shown.Issue.ID != to.ID+".1" || shown.MovedFrom != task.ID {
+			t.Fatalf("expected %s.1 moved from %s, got id %s moved_from %q", to.ID, task.ID, shown.Issue.ID, shown.MovedFrom)
+		}
+
+		runJSONCommand(t, a, []string{"show", sub.ID}, &shown)
+		if shown.Issue.ID != to.ID+".1.1" || shown.MovedFrom != sub.ID {
+			t.Fatalf("expected %s.1.1 moved from %s, got id %s moved_from %q", to.ID, sub.ID, shown.Issue.ID, shown.MovedFrom)
+		}
+
+		var current ait.ShowResponse
+		runJSONCommand(t, a, []string{"show", to.ID + ".1"}, &current)
+		if current.MovedFrom != "" {
+			t.Fatalf("expected no moved_from when shown by its current ID, got %q", current.MovedFrom)
+		}
+	})
+}
+
+// A number freed by a move stays reserved for the alias, so an old
+// reference never lands on a newer, unrelated issue.
+func TestMovedAwayNumberIsNotReused(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		from, to, task, _ := moveFixture(t, a)
+		runJSONCommand[ait.IssueRef](t, a, []string{"update", task.ID, "--parent", to.ID}, nil)
+
+		var created ait.IssueRef
+		runJSONCommand(t, a, []string{"create", "--title", "Newcomer", "--parent", from.ID}, &created)
+		if created.ID != from.ID+".2" {
+			t.Fatalf("expected %s.2, got %s", from.ID, created.ID)
+		}
+	})
+}
+
+func TestMoveBackToRootRestoresOriginalID(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var epic, root ait.IssueRef
+		runJSONCommand(t, a, []string{"create", "--title", "Epic", "--type", "epic"}, &epic)
+		runJSONCommand(t, a, []string{"create", "--title", "Loose"}, &root)
+
+		var moved ait.IssueRef
+		runJSONCommand(t, a, []string{"update", root.ID, "--parent", epic.ID}, &moved)
+		runJSONCommand(t, a, []string{"update", moved.ID, "--parent", ""}, &moved)
+		if moved.ID != root.ID {
+			t.Fatalf("expected the original root ID %s back, got %s", root.ID, moved.ID)
+		}
+
+		var shown ait.ShowResponse
+		runJSONCommand(t, a, []string{"show", root.ID}, &shown)
+		if shown.MovedFrom != "" {
+			t.Fatalf("expected no moved_from for the live ID, got %q", shown.MovedFrom)
+		}
+	})
+}
+
+func TestUpdateParentRejectsInvalidMoves(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		from, _, task, sub := moveFixture(t, a)
+		var initiative ait.IssueRef
+		runJSONCommand(t, a, []string{"create", "--title", "Init", "--type", "initiative"}, &initiative)
+
+		cases := map[string][]string{
+			"under itself":           {"update", task.ID, "--parent", task.ID},
+			"under its descendant":   {"update", task.ID, "--parent", sub.ID},
+			"epic under a task":      {"update", from.ID, "--parent", task.ID},
+			"task under initiative":  {"update", task.ID, "--parent", initiative.ID},
+			"initiative with parent": {"update", initiative.ID, "--parent", from.ID},
+			"missing parent":         {"update", task.ID, "--parent", "nope-9999"},
+		}
+		for name, args := range cases {
+			t.Run(name, func(t *testing.T) {
+				if err := runExpectError(t, a, args); err == nil {
+					t.Fatalf("expected %v to be refused", args)
+				}
+			})
+		}
+
+		var shown ait.ShowResponse
+		runJSONCommand(t, a, []string{"show", task.ID}, &shown)
+		if shown.MovedFrom != "" || shown.Issue.ID != task.ID {
+			t.Fatalf("expected refused moves to leave %s alone, got %s", task.ID, shown.Issue.ID)
+		}
+	})
+}
+
+func TestDeletingMovedIssueRemovesItsOldIDs(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		_, to, task, _ := moveFixture(t, a)
+		var moved ait.IssueRef
+		runJSONCommand(t, a, []string{"update", task.ID, "--parent", to.ID}, &moved)
+		runJSONCommand[map[string]any](t, a, []string{"delete", moved.ID, "--force", "--cascade"}, nil)
+
+		if err := runExpectError(t, a, []string{"show", task.ID}); err == nil {
+			t.Fatal("expected the old ID to stop resolving once the issue is deleted")
+		}
+	})
+}
+
+func TestMovedIDsSurviveReopen(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "move.db")
+
+	a, err := ait.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	_, to, task, _ := moveFixture(t, a)
+	var moved ait.IssueRef
+	runJSONCommand(t, a, []string{"update", task.ID, "--parent", to.ID}, &moved)
+	a.Close()
+
+	a, err = ait.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("reopen failed: %v", err)
+	}
+	defer a.Close()
+
+	var shown ait.ShowResponse
+	runJSONCommand(t, a, []string{"show", moved.ID}, &shown)
+	if shown.Issue.Title != "Task" || len(shown.Children) != 1 || shown.Children[0].ID != moved.ID+".1" {
+		t.Fatalf("expected %s (Task, child %s.1) after reopen, got %+v / %+v", moved.ID, moved.ID, shown.Issue, shown.Children)
+	}
+}

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-10-10
+
+### Added
+- `update <id> --parent <new-parent>` moves an issue, children and all, to a different parent, and `--parent ""` makes it a standalone root. Until now `--parent` was accepted and then refused, so an issue filed under the wrong epic had to be recreated and the original cancelled with a pointer note. A moved issue gets new IDs that match its new place, so the dotted ID never claims a parent it no longer has. The old IDs are kept as aliases and still work in every command, so references in notes, commit messages and other issues keep landing on the right issue: `ait show <old-id>` returns the issue as normal, plus a `moved_from` field set to the ID you asked for. A number freed by a move is never handed out again, and moving an issue back to where it was restores its old ID. Moves are refused under the issue itself or one of its own descendants, and wherever the type rules forbid (an epic under a task, say). Schema migration 6 adds the `issue_aliases` table; deleting or flushing an issue removes its aliases too. Suggested by an agent that had just done the recreate-and-cancel dance by hand.
+
 ## [1.16.1] - 2026-10-10
 
 ### Fixed
