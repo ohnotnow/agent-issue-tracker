@@ -45,7 +45,9 @@ func Open(ctx context.Context, dbPath string) (*App, error) {
 		}
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	// Pragmas go in the DSN so the driver applies them to every connection
+	// the pool opens; an Exec would reach only whichever one ran it.
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
 	if err != nil {
 		return nil, err
 	}
@@ -54,15 +56,8 @@ func Open(ctx context.Context, dbPath string) (*App, error) {
 		db.SetMaxOpenConns(1)
 	}
 
-	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = ON;`); err != nil {
-		db.Close()
-		return nil, err
-	}
-	if _, err := db.ExecContext(ctx, `PRAGMA busy_timeout = 5000;`); err != nil {
-		db.Close()
-		return nil, err
-	}
-	if _, err := db.ExecContext(ctx, `PRAGMA journal_mode = WAL;`); err != nil {
+	// sql.Open is lazy; connect now so a bad path or pragma fails here.
+	if err := db.PingContext(ctx); err != nil {
 		db.Close()
 		return nil, err
 	}
