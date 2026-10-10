@@ -39,7 +39,7 @@ func generateBashCompletion() string {
 		fmt.Fprintf(&flagCases, "                COMPREPLY=($(compgen -W \"%s\" -- \"${cur}\"))\n", flags)
 		fmt.Fprintf(&flagCases, "                return\n")
 		fmt.Fprintf(&flagCases, "            fi\n")
-		fmt.Fprintf(&flagCases, "            ;;&\n")
+		fmt.Fprintf(&flagCases, "            ;;\n")
 	}
 
 	return fmt.Sprintf(`_ait_completions() {
