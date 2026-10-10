@@ -9,7 +9,26 @@ permissions:
   contents: write
 
 jobs:
+  # Publishing waits for this, so a tag cannot ship a build that fails the
+  # tests. Releases use the current stable Go, not the go.mod minimum, so
+  # binaries pick up compiler and standard library security fixes.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
   build:
+    needs: test
     strategy:
       matrix:
         include:
@@ -31,7 +50,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: stable
 
       - name: Build
         env:
