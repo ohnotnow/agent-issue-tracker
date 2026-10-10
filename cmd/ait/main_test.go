@@ -1664,6 +1664,43 @@ func TestListTreeThreeLevels(t *testing.T) {
 	})
 }
 
+// The renderers used to start only from issues with no parent, so a child
+// whose parent was filtered out (by --parent, or by being closed) vanished.
+func TestListHumanAndTreeShowChildrenWhoseParentIsFilteredOut(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var epic, task, sub ait.Issue
+		runJSONCommand(t, a, []string{"create", "--title", "Epic", "--type", "epic"}, &epic)
+		runJSONCommand(t, a, []string{"create", "--title", "Task", "--parent", epic.ID}, &task)
+		runJSONCommand(t, a, []string{"create", "--title", "Sub", "--parent", task.ID}, &sub)
+
+		render := func(args ...string) string {
+			return captureStdout(t, func() {
+				if err := a.Run(ctx, args); err != nil {
+					t.Fatalf("%v failed: %v", args, err)
+				}
+			})
+		}
+
+		for _, mode := range []string{"--human", "--tree"} {
+			out := render("list", "--parent", epic.ID, mode)
+			if !strings.Contains(out, task.ID) || !strings.Contains(out, "Task") {
+				t.Fatalf("list --parent %s: expected %s in output:\n%s", mode, task.ID, out)
+			}
+		}
+
+		runJSONCommand[ait.IssueRef](t, a, []string{"close", epic.ID}, nil)
+		for _, mode := range []string{"--human", "--tree"} {
+			out := render("list", mode)
+			if !strings.Contains(out, task.ID) || !strings.Contains(out, "Sub") {
+				t.Fatalf("list %s with closed parent: expected %s and its child in output:\n%s", mode, task.ID, out)
+			}
+			if strings.Contains(out, "Epic") {
+				t.Fatalf("list %s: closed epic should stay hidden:\n%s", mode, out)
+			}
+		}
+	})
+}
+
 func TestListHumanAndTreeMutuallyExclusive(t *testing.T) {
 	testApp(t, func(ctx context.Context, a *ait.App) {
 		err := runExpectError(t, a, []string{"list", "--human", "--tree"})

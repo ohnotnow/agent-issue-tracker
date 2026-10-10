@@ -18,10 +18,18 @@ type groupedIssues struct {
 	childrenByParent map[string][]Issue
 }
 
+// groupIssues arranges issues for display. An issue whose parent is not in
+// the list (filtered out by --parent, status or type) is shown as a root
+// under its full ID, so no listed issue goes missing from the output.
 func groupIssues(issues []Issue) groupedIssues {
+	listed := make(map[string]bool, len(issues))
+	for _, iss := range issues {
+		listed[iss.ID] = true
+	}
+
 	g := groupedIssues{childrenByParent: make(map[string][]Issue)}
 	for _, iss := range issues {
-		if iss.ParentID == nil {
+		if iss.ParentID == nil || !listed[*iss.ParentID] {
 			g.roots = append(g.roots, iss)
 		} else {
 			g.childrenByParent[*iss.ParentID] = append(g.childrenByParent[*iss.ParentID], iss)
