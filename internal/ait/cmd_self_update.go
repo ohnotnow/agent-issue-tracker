@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -33,12 +32,8 @@ func RunSelfUpdate(args []string) error {
 	fs.BoolVar(&check, "check", false, "")
 	fs.BoolVar(&yes, "yes", false, "")
 	fs.BoolVar(&yes, "y", false, "")
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			PrintCommandHelp("self-update")
-			return nil
-		}
-		return &CLIError{Code: "usage", Message: err.Error(), ExitCode: 64}
+	if helped, err := parseFlags(fs, args, "self-update"); helped || err != nil {
+		return err
 	}
 
 	exe, err := os.Executable()

@@ -14,6 +14,24 @@ func isHelpRequested(err error) bool {
 	return errors.Is(err, flag.ErrHelp)
 }
 
+// parseFlags parses args into fs, printing the command's help when asked
+// (helped is then true). It refuses leftover positional arguments: the flag
+// package stops at the first one, so a stray word would otherwise silently
+// drop every flag after it, and `flush preview --dry-run` really flushed.
+func parseFlags(fs *flag.FlagSet, args []string, command string) (helped bool, err error) {
+	if err := fs.Parse(args); err != nil {
+		if isHelpRequested(err) {
+			PrintCommandHelp(command)
+			return true, nil
+		}
+		return false, &CLIError{Code: "usage", Message: err.Error(), ExitCode: 64}
+	}
+	if fs.NArg() > 0 {
+		return false, &CLIError{Code: "usage", Message: fmt.Sprintf("%s: unexpected argument %q", command, fs.Arg(0)), ExitCode: 64}
+	}
+	return false, nil
+}
+
 func (a *App) Run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		PrintHelp()
@@ -32,12 +50,8 @@ func (a *App) runInit(ctx context.Context, args []string) error {
 	prefix := fs.String("prefix", "", "")
 	fs.SetOutput(io.Discard)
 
-	if err := fs.Parse(args); err != nil {
-		if isHelpRequested(err) {
-			PrintCommandHelp("init")
-			return nil
-		}
-		return &CLIError{Code: "usage", Message: err.Error(), ExitCode: 64}
+	if helped, err := parseFlags(fs, args, "init"); helped || err != nil {
+		return err
 	}
 
 	explicit := strings.TrimSpace(*prefix) != ""
@@ -118,12 +132,8 @@ func (a *App) runCreate(ctx context.Context, args []string) error {
 	long := fs.Bool("long", false, "")
 	fs.SetOutput(io.Discard)
 
-	if err := fs.Parse(args); err != nil {
-		if isHelpRequested(err) {
-			PrintCommandHelp("create")
-			return nil
-		}
-		return &CLIError{Code: "usage", Message: err.Error(), ExitCode: 64}
+	if helped, err := parseFlags(fs, args, "create"); helped || err != nil {
+		return err
 	}
 
 	if *human {
@@ -296,12 +306,8 @@ func (a *App) runList(ctx context.Context, args []string) error {
 	tree := fs.Bool("tree", false, "")
 	fs.SetOutput(io.Discard)
 
-	if err := fs.Parse(args); err != nil {
-		if isHelpRequested(err) {
-			PrintCommandHelp("list")
-			return nil
-		}
-		return &CLIError{Code: "usage", Message: err.Error(), ExitCode: 64}
+	if helped, err := parseFlags(fs, args, "list"); helped || err != nil {
+		return err
 	}
 	if *human && *tree {
 		return &CLIError{Code: "usage", Message: "--human and --tree are mutually exclusive", ExitCode: 64}
@@ -547,8 +553,8 @@ func (a *App) runUpdate(ctx context.Context, args []string) error {
 	skipReadCheck := fs.Bool(strings.TrimPrefix(SkipReadCheckFlag, "--"), false, "")
 	fs.SetOutput(io.Discard)
 
-	if err := fs.Parse(args[1:]); err != nil {
-		return &CLIError{Code: "usage", Message: err.Error(), ExitCode: 64}
+	if helped, err := parseFlags(fs, args[1:], "update"); helped || err != nil {
+		return err
 	}
 
 	// Detect whether --claim / --description were passed at all, so that an
@@ -1177,12 +1183,8 @@ func (a *App) runReady(ctx context.Context, args []string) error {
 	issueType := fs.String("type", "", "")
 	fs.SetOutput(io.Discard)
 
-	if err := fs.Parse(args); err != nil {
-		if isHelpRequested(err) {
-			PrintCommandHelp("ready")
-			return nil
-		}
-		return &CLIError{Code: "usage", Message: err.Error(), ExitCode: 64}
+	if helped, err := parseFlags(fs, args, "ready"); helped || err != nil {
+		return err
 	}
 	if *issueType != "" {
 		if err := ValidateIssueType(*issueType); err != nil {
@@ -1578,12 +1580,8 @@ func (a *App) runFlush(ctx context.Context, args []string) error {
 	summary := fs.String("summary", "", "")
 	fs.SetOutput(io.Discard)
 
-	if err := fs.Parse(args); err != nil {
-		if isHelpRequested(err) {
-			PrintCommandHelp("flush")
-			return nil
-		}
-		return &CLIError{Code: "usage", Message: err.Error(), ExitCode: 64}
+	if helped, err := parseFlags(fs, args, "flush"); helped || err != nil {
+		return err
 	}
 
 	result, err := a.flushTerminalIssues(ctx, *dryRun, *summary)
@@ -1611,12 +1609,8 @@ func (a *App) runLog(ctx context.Context, args []string) error {
 	search := fs.String("search", "", "")
 	fs.SetOutput(io.Discard)
 
-	if err := fs.Parse(args); err != nil {
-		if isHelpRequested(err) {
-			PrintCommandHelp("log")
-			return nil
-		}
-		return &CLIError{Code: "usage", Message: err.Error(), ExitCode: 64}
+	if helped, err := parseFlags(fs, args, "log"); helped || err != nil {
+		return err
 	}
 
 	entries, err := a.fetchFlushHistory(ctx, *last, *since)
@@ -1684,12 +1678,8 @@ func (a *App) runLogPurge(ctx context.Context, args []string) error {
 	full := fs.Bool("full", false, "")
 	fs.SetOutput(io.Discard)
 
-	if err := fs.Parse(args); err != nil {
-		if isHelpRequested(err) {
-			PrintCommandHelp("log purge")
-			return nil
-		}
-		return &CLIError{Code: "usage", Message: err.Error(), ExitCode: 64}
+	if helped, err := parseFlags(fs, args, "log purge"); helped || err != nil {
+		return err
 	}
 
 	result, err := a.purgeFlushHistory(ctx, *before, *keep, *full)

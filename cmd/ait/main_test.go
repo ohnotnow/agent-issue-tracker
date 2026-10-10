@@ -2549,6 +2549,51 @@ func TestFlushDryRunDoesNotDelete(t *testing.T) {
 	})
 }
 
+// The flag package stops at the first positional word, so a stray word used
+// to drop every flag after it silently: `flush preview --dry-run` flushed.
+func TestStrayArgumentsAreRefusedBeforeActing(t *testing.T) {
+	testApp(t, func(ctx context.Context, a *ait.App) {
+		var done ait.IssueRef
+		runJSONCommand(t, a, []string{"create", "--title", "Done"}, &done)
+		runJSONCommand[ait.IssueRef](t, a, []string{"close", done.ID}, nil)
+
+		for _, args := range [][]string{
+			{"flush", "preview", "--dry-run"},
+			{"flush", "--dry-run", "preview"},
+			{"log", "recent", "--last", "1"},
+			{"log", "purge", "old", "--full"},
+			{"create", "stray", "--title", "Never created"},
+			{"create", "--title", "Never created", "stray"},
+			{"update", done.ID, "stray", "--title", "Renamed"},
+			{"list", "open"},
+			{"ready", "stray"},
+			{"init", "stray"},
+		} {
+			err := runExpectError(t, a, args)
+			var cliErr *ait.CLIError
+			if !errors.As(err, &cliErr) || cliErr.Code != "usage" {
+				t.Errorf("%v: expected a usage error, got %v", args, err)
+			}
+		}
+
+		var listed struct {
+			Issues []ait.IssueRef `json:"issues"`
+		}
+		runJSONCommand(t, a, []string{"list", "--all"}, &listed)
+		if len(listed.Issues) != 1 || listed.Issues[0].Title != "Done" {
+			t.Fatalf("expected only the untouched closed issue, got %+v", listed.Issues)
+		}
+	})
+}
+
+func TestSelfUpdateRefusesStrayArguments(t *testing.T) {
+	err := ait.RunSelfUpdate([]string{"check"})
+	var cliErr *ait.CLIError
+	if !errors.As(err, &cliErr) || cliErr.Code != "usage" {
+		t.Fatalf("expected a usage error, got %v", err)
+	}
+}
+
 func TestFlushSkipsClosedEpicWithOpenChildren(t *testing.T) {
 	testApp(t, func(ctx context.Context, a *ait.App) {
 		var epic ait.Issue
