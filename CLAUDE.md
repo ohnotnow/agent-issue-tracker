@@ -6,25 +6,30 @@ Local-first CLI issue tracker for coding agents. Go 1.24, SQLite, single binary.
 
 - **Build**: `GOCACHE=$(pwd)/.gocache go build -o ait ./cmd/ait`
 - **Test**: `GOCACHE=$(pwd)/.gocache go test ./...`
-- **Run (dev)**: `go run . <command>`
+- **Run (dev)**: `go run ./cmd/ait <command>`
 
 ## Project Structure
 
 ```
-cmd/ait/main.go             Entrypoint: --db flag extraction, help/version shortcuts, Open + Run
+cmd/ait/main.go             Entrypoint: --db flag extraction, command lookup, Open (if NeedsDB) + Run
+cmd/ait/main_test.go        End-to-end CLI tests (in-memory and temp-file SQLite)
 internal/ait/
-  app.go                    Command router, flag parsing, per-command handlers and help text
-  store.go                  DB access, queries, ready/flush logic, schema bootstrap, Open()
+  command.go                Command type and lookup
+  command_registry.go       Every command's name, aliases, flags, help text and handler
+  app.go                    Command handlers, parseFlags, claim logic
+  store.go                  Open(), DB access, queries, ID allocation, moves, ready/flush logic
   migrate.go                Forward-only numbered migrations with schema_version tracking
   types.go                  Core types (Issue, Note, CLIError), validation, JSON helpers
   config.go                 Project root detection, DB path, prefix normalisation/inference
   keys.go                   Sqids-based root public ID generation
   format.go                 Human/tree list rendering, Markdown export
+  editor.go                 $EDITOR round trip for --human (scissors line separates help text)
   completion.go             Bash/zsh completion script generation
   guards.go                 Read check, empty-body and shrink refusals for blind writes
+  gitignore.go              Adds .ait/ to .gitignore on init
   version.go                Version command and GitHub release check
-main_test.go                End-to-end CLI tests (in-memory and temp-file SQLite)
-internal/ait/version_test.go  Version comparison unit tests
+  cmd_self_update.go        self-update: download, checksum check, binary swap
+  *_test.go                 Unit tests (editor, completion, pragmas, version, updater, gitignore)
 claude/                     Skills and agent docs for Claude Code integration
 ```
 
@@ -32,7 +37,7 @@ claude/                     Skills and agent docs for Claude Code integration
 
 - `cmd/ait/main.go` is thin: extracts `--db`, looks up command via `LookupCommand`, opens `App` only if `cmd.NeedsDB` is true.
 - `App.Run()` dispatches to command handlers in `app.go`.
-- `Open()` in `store.go` sets up pragmas, creates schema, runs migrations, infers prefix, syncs public IDs.
+- `Open()` in `store.go` puts the SQLite pragmas in the DSN (so every pooled connection gets them), runs migrations, infers prefix, syncs public IDs.
 - Single package `internal/ait` split by concern, not by domain.
 
 ## Domain Model
@@ -42,7 +47,7 @@ claude/                     Skills and agent docs for Claude Code integration
 - **Priorities**: `P0`-`P4` (lexical ordering)
 - **IDs**: `<prefix>-<sqid>` for roots, `.1`, `.1.1` etc for children
 - Dependencies are many-to-many with cycle detection
-- Claims use `claimed_by`/`claimed_at` fields for multi-agent coordination
+- Claims use `claimed_by`/`claimed_at` fields for multi-agent coordination; a claim is one conditional write (`WHERE claimed_by IS NULL`), so racing agents get exactly one winner
 
 ## Key Invariants
 
@@ -57,11 +62,12 @@ claude/                     Skills and agent docs for Claude Code integration
 - Notes and dependencies use `ON DELETE CASCADE`.
 - `show` stamps the issue with `CLAUDE_CODE_SESSION_ID` and the time. `update` (title/description/--human) and `close`/`cancel --note` refuse unless the same session showed the issue within `ShownWindow` (one hour); no session id means no check. Override with `--dangerously-skip-read-check`.
 - `update` refuses an empty description, and one under half the existing length without `--force`.
+- FlagSet-based commands parse through `parseFlags`, which refuses leftover positional arguments (the flag package stops at the first one and would silently drop later flags).
 
 ## Testing Conventions
 
-- End-to-end tests in `main_test.go` using Go `testing`.
-- Storage: `:memory:` SQLite for most tests, temp-file DBs for migration/reopen scenarios.
+- End-to-end tests in `cmd/ait/main_test.go` using Go `testing`; unit tests in `internal/ait/*_test.go`.
+- Storage: `:memory:` SQLite for most tests, temp-file DBs for migration/reopen/concurrency scenarios.
 - Helper `runJSONCommand` drives `app.Run()` and unmarshals JSON output.
 
 ## Schema Migrations

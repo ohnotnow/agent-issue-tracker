@@ -67,6 +67,7 @@ It's not designed to handle cross-team shared issues, work, projects.  The inter
 - `close` (`--cascade`, `--note`, `--reason` — alias for `--note`)
 - `reopen`
 - `cancel`
+- `delete` (`--force`, `--cascade`)
 - `claim`
 - `unclaim`
 - `ready` (`--type`, `--long`)
@@ -349,13 +350,13 @@ This is useful for git worktrees (pointing back to the main repo's database), ke
 
 ## Schema Versioning
 
-The database schema is managed through a forward-only migration system. Each migration is numbered and runs in its own transaction. On startup, the tool checks the current schema version and applies any pending migrations automatically.
+The database schema is managed through a forward-only migration system. Each migration is numbered and runs in its own transaction, recording its version as it commits, so an interrupted upgrade carries on from the last step that finished. On startup, the tool checks the current schema version and applies any pending migrations automatically.
 
 This means you can update the `ait` binary and your existing database will be upgraded transparently — no manual steps required. The current schema version is visible via `ait config`.
 
 ## Local Storage
 
-The tool uses SQLite and creates a local database at `.ait/ait.db` in the current git repository root (or the current directory if no git root is found). The first time it creates that directory inside a git repository, it adds `.ait/` to the project's `.gitignore` so the database isn't committed. It only does this for the default location, and it never touches an entry you've already added or removed yourself.
+The tool uses SQLite and creates a local database at `.ait/ait.db` in the current git repository root (or the current directory if no git root is found). Each time you run `ait init` inside a git repository, it makes sure `.ait/` is in the project's `.gitignore` so the database isn't committed, adding the entry back if it has gone missing. It only does this for the default location, and leaves an existing entry (`.ait`, `.ait/`, `/.ait` or `/.ait/`) as you wrote it.
 
 That database stores:
 

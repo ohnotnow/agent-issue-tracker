@@ -1428,7 +1428,9 @@ func (a *App) moveIssue(ctx context.Context, internalID int64, newParentID *int6
 		if _, err := tx.ExecContext(ctx, `INSERT INTO issue_aliases (public_id, issue_id, created_at) VALUES (?, ?, ?)`, oldID, id, now); err != nil {
 			return err
 		}
-		// Moving an issue back to where it was makes its old ID live again.
+		// Moving an issue back to root gives it its deterministic root ID
+		// again, which is still recorded as an alias: drop it so it is live.
+		// (A move back under a former parent gets a fresh number instead.)
 		if _, err := tx.ExecContext(ctx, `DELETE FROM issue_aliases WHERE public_id = ?`, newID); err != nil {
 			return err
 		}
