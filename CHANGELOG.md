@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The first release to come out of a full code review rather than a feature request. There are no new commands, but there is a run of fixes to IDs, claims, migrations and argument handling, which matter most when several agents share one tracker.
 
+### Added
+- An Installation section in the README. It shows how to download the prebuilt binary for your platform with `curl` from the `releases/latest` URL, which always points at the newest release, so you don't need Go or the current version number.
+
 ### Changed
 - Commands now refuse stray words instead of silently ignoring every flag after them. Go's flag parser stops at the first positional word, and no command checked for leftovers, so `ait flush preview --dry-run` really flushed (the `--dry-run` was never seen), `ait self-update check` would have installed rather than checked, and `create`, `update`, `list`, `ready`, `log`, `log purge` and `init` quietly dropped filters or field changes. They now return a `usage` error (exit 64) naming the unexpected argument, before changing anything. This could break a script that relied on the old leniency, such as `ait list open`; use `--status open` instead.
 - Release binaries are now built with the current stable Go rather than the `go 1.24.1` minimum in `go.mod`, so they pick up compiler and standard library security fixes. The release workflow also runs `go vet` and the test suite before it publishes anything.

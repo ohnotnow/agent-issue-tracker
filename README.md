@@ -17,6 +17,24 @@ This project is working - but use at your own risk.  It's been used on real proj
 
 Schema changes are managed through a forward-only migration system, so existing databases are upgraded automatically on startup.
 
+## Installation
+
+Prebuilt binaries for Linux, macOS and Windows (amd64 and arm64) are attached to every [release](https://github.com/ohnotnow/agent-issue-tracker/releases), so you don't need Go installed. The `releases/latest` URL always points at the newest release, so you can fetch it without knowing the version number:
+
+```bash
+curl -fsSLO https://github.com/ohnotnow/agent-issue-tracker/releases/latest/download/ait-linux-amd64
+curl -fsSLO https://github.com/ohnotnow/agent-issue-tracker/releases/latest/download/SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS
+chmod +x ait-linux-amd64
+sudo mv ait-linux-amd64 /usr/local/bin/ait
+```
+
+The files are named `ait-<os>-<arch>`: swap in `linux`, `darwin` or `windows`, and `amd64` or `arm64` (Windows files end in `.exe`). On macOS use `shasum -a 256 -c --ignore-missing SHA256SUMS` for the check.
+
+Once installed, `ait self-update` keeps it current (see [Self-update](#self-update)).
+
+If you do have Go, `go install github.com/ohnotnow/agent-issue-tracker/cmd/ait@latest` also works.
+
 ## Current Goals
 
 The tool is optimized for agent workflow first:
