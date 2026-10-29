@@ -84,3 +84,5 @@ Cross-repo orchestration (one feature spanning a frontend and a backend repo, et
 
 If tweaks are asked for and work done on the project - offer to update the CHANGELOG.md.  Ask the user first what the new tag will be so you can use it when updating the file.
 
+When the work is ready to ship, remind the user about the `tag-release` skill (`.claude/skills/tag-release/SKILL.md`). It checks the repo, agrees and sanity-checks the version, updates the changelog and prints the tag command for the user to run. Releases are immutable on GitHub, so a deleted release's tag name can never be reused: `v1.80.0` is burned (the skill keeps the list).
+

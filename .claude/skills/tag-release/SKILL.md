@@ -1,68 +1,102 @@
 ---
 name: tag-release
 description: >
-  Pre-flight check before cutting an ait release. Reports the state of the working tree, the
-  latest tag, and CHANGELOG.md, then flags anything that looks off. Does NOT run git, gh, or any
-  release commands — just reports findings and hands back to the maintainer. Use when the user
-  says "tag a release", "ship a release", "pre-flight check", "tag-release", or asks to look over
-  the repo before they cut a tag.
-allowed-tools: "Read,Bash"
-version: "0.2.0"
+  Get an ait release ready to tag. Checks the working tree, the latest tag and CHANGELOG.md,
+  agrees the new version with the maintainer, checks it is a sensible next step (and not a
+  burned tag name), moves [Unreleased] into a dated release entry, then prints the exact
+  tag-and-push command for the maintainer to paste. Never runs git or gh writes itself. Use when
+  the user says "tag a release", "ship a release", "cut a release", "pre-flight check",
+  "tag-release", or asks to look over the repo before they cut a tag.
+allowed-tools: "Read,Edit,Bash"
+version: "0.3.0"
 ---
 
-# tag-release (pre-flight check)
+# tag-release
 
-A read-only sanity check before the maintainer cuts a release. Gather facts, flag anything that
-looks wrong, hand back. **Do not run `git commit`, `git tag`, `git push`, `gh release ...`, or
-edit any files.** The maintainer drives the actual release; this skill just spots problems.
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds and publishes a GitHub
+release. The repo has **immutable releases** switched on, so a published release can't be
+changed, and once a tag name has been used for one, GitHub refuses to reuse it even after the
+release and tag are deleted. A wrong tag permanently burns a version number. That is why this
+skill prepares everything but leaves the tag itself to the maintainer.
 
-## What to check
+**Never run `git commit`, `git tag`, `git push`, or `gh release ...`.** The only file this skill
+edits is `CHANGELOG.md`, and only after the maintainer has agreed the version.
 
-Run these (read-only) and gather the output:
+## 1. Gather the state
 
-- `git status --short` — anything uncommitted or untracked.
-- `git branch --show-current` — current branch.
-- `git tag --sort=-v:refname | head -3` — most recent tags.
-- `git log <latest-tag>..HEAD --oneline` — commits since the latest tag.
-- `git show <latest-tag> --stat --format='%s%n%n%b' --no-patch` — the latest tag's annotation and what was in it.
-- Top of `CHANGELOG.md` — the `[Unreleased]` block and the latest `## [X.Y.Z]` heading.
+Run these (read-only):
 
-If `git status --short` shows untracked directories, peek inside (`ls` or `git ls-files --others --exclude-standard <path>`) so you can describe what's there rather than just "something untracked".
+- `git status -sb`: current branch, uncommitted or untracked files, and whether the branch is
+  ahead of `origin` (the tag must point at a pushed commit).
+- `git tag --sort=-v:refname | head -3`: most recent tags.
+- `git log <latest-tag>..HEAD --oneline`: commits since the latest tag.
+- `git ls-remote --tags origin`: tags on GitHub, in case one exists remotely but not locally.
+- The top of `CHANGELOG.md`: the `[Unreleased]` block, the latest `## [X.Y.Z]` heading, and the
+  compare links at the bottom of the file.
 
-## What to report
+If there are untracked directories, peek inside (`git ls-files --others --exclude-standard
+<path>`) so you can say what's there rather than just "something untracked".
 
-A short markdown report with these sections, in this order. Skip a section if there's nothing to
-say in it.
+## 2. Report and agree the version
 
-### State
-A few bullet points: branch, latest tag, commits since latest tag (count is fine, list them if
-≤5), `[Unreleased]` content (paste it verbatim if short, summarise if long).
+A short report, skipping any section with nothing in it:
 
-### Flags
-Anything the maintainer should notice before tagging. One line each. Examples:
+- **State**: branch, latest tag, commits since it (list them if 5 or fewer), and the
+  `[Unreleased]` content (verbatim if short, summarised if long).
+- **Flags**: one line each. For example: uncommitted changes that look like part of the release;
+  `[Unreleased]` empty although there are commits since the last tag; not on `master`; branch
+  ahead of `origin`; the latest tag has no changelog entry.
+- **Proposed version**: suggest the next version from what changed (patch for fixes only, minor
+  for new behaviour, major for breaking changes) and say why. Then **ask the maintainer to
+  confirm it**. Don't go on until they have.
 
-- Latest tag `vX.Y.Z` has no entry in CHANGELOG.md (mismatch).
-- `[Unreleased]` is empty but there are uncommitted changes in `<path>` — those might be the release.
-- `[Unreleased]` is empty and the tree is clean — nothing to release right now.
-- Branch is `<x>`, not `master`.
-- Latest tag annotation is empty / says "test" / is a single character.
-- GitHub release for `vX.Y.Z` likely shows only the auto-generated "Full Changelog" line because the changelog wasn't updated before tagging.
+## 3. Check the version
 
-Don't pad. If everything's fine, say so in one line.
+Before touching the changelog, check the agreed version:
 
-### Suggested next steps
-Plain English, not commands. Examples:
+- It must be exactly one step on from the latest tag: `X.Y.(Z+1)`, `X.(Y+1).0` or `(X+1).0.0`.
+  Anything else (say 1.17.0 to 1.80.0) is almost certainly a typo, so stop and ask.
+- It must not already exist locally or on `origin`.
+- It must not be in the burned list below.
 
-- "Add a `[1.8.1]` entry to CHANGELOG.md describing the test tag, then `gh release edit v1.8.1` to match."
-- "Commit `.claude/skills/tag-release/` and bump CHANGELOG.md before tagging."
-- "Nothing to do — ready to tag whenever you are."
+### Burned tag names
 
-The maintainer knows git and `gh`. **Do not write out command sequences, heredocs, or temp-file
-recipes.** A one-line `gh release edit ...` example is fine if it genuinely clarifies; anything
-longer belongs in the maintainer's hands, not the skill's output.
+These were used for immutable releases that were then deleted. GitHub refuses to publish them
+again (the API error is `tag_name was used by an immutable release`).
+
+| Tag | What happened | Use instead |
+|---|---|---|
+| `v1.80.0` | Typo for v1.18.0, tagged 2026-10-10. Deleted 2026-10-29 and re-released as `v1.18.0`. | `v1.80.1` or `v1.81.0` |
+
+If a release is ever deleted again, add it to this table.
+
+## 4. Update the changelog
+
+Once the version is agreed and checked, edit `CHANGELOG.md`:
+
+- Move the `[Unreleased]` content under a new `## [X.Y.Z] - YYYY-MM-DD` heading (today's date),
+  leaving an empty `## [Unreleased]` above it.
+- Update the compare links at the bottom: `[Unreleased]` compares `vX.Y.Z...HEAD`, and a new
+  `[X.Y.Z]` line compares the previous tag with `vX.Y.Z`.
+
+Show the maintainer the new entry.
+
+## 5. Hand over the command
+
+The changelog edit still needs committing and pushing before the tag. Say so in plain English,
+then print the tag command with the version copied from the changelog heading, so nothing is
+typed by hand:
+
+```
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+Recent tags are lightweight (no annotation). Release notes come from the changelog and GitHub's
+generated notes, not from the tag.
 
 ## Notes
 
-- Strictly read-only. No edits to CHANGELOG.md, no `gh` writes, no `git` writes.
-- Voice: matter-of-fact, brief. The maintainer is sleepy and busy; respect their time.
-- If the maintainer asks you to *do* something after the report (e.g. "go ahead and update the changelog"), that's fine — but only after they've explicitly asked.
+- Voice: matter-of-fact and brief. The maintainer knows git and `gh`; don't write out long
+  command sequences beyond the one tag command.
+- If the maintainer asks for something beyond this (say, editing release notes with
+  `gh release edit`), that's fine, but only after they've explicitly asked in this session.

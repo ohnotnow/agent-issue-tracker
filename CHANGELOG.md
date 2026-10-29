@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.18.0] - 2026-10-10
+## [1.18.0] - 2026-10-29
 
 The first release to come out of a full code review rather than a feature request. There are no new commands, but there is a run of fixes to IDs, claims, migrations and argument handling, which matter most when several agents share one tracker.
 
