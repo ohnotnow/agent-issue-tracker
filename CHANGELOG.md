@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - The `plan-to-ait` agent is the newer, shorter version that leaves the craft of writing issues to the `spec-crafting` skill (in the agentic-stuff repo) and the ait mechanics to the ait skill.
-- `ait help` sizes its command column to the longest command name, so `self-update` and `install-skills` line up with the rest.
+- `ait help` sizes its command column to the longest command name, so `install-skills` lines up with the rest.
 
 ### Removed
 - The `ait-fleet` skill. If you have it installed, delete `~/.claude/skills/ait-fleet/`. The `ait-crafting` skill, which lived in the agentic-stuff repo, is retired too, so delete `~/.claude/skills/ait-crafting/` once you have `spec-crafting`.
