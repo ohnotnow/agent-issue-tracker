@@ -60,6 +60,7 @@ func RunSelfUpdate(args []string) error {
 		home:           home,
 		checkOnly:      check,
 		assumeYes:      yes,
+		afterSwap:      checkNewSkills,
 	})
 }
 
@@ -80,6 +81,9 @@ type selfUpdateConfig struct {
 	home           string
 	checkOnly      bool
 	assumeYes      bool
+	// afterSwap runs once the new binary is in place: checkNewSkills, so the
+	// user sees whether the skills changed too. Nil in most tests.
+	afterSwap func(target string, out io.Writer)
 }
 
 func runSelfUpdate(cfg selfUpdateConfig) error {
@@ -219,6 +223,9 @@ func runSelfUpdate(cfg selfUpdateConfig) error {
 	}
 
 	fmt.Fprintf(cfg.stdout, "Updated to %s.\n", rel.TagName)
+	if cfg.afterSwap != nil {
+		cfg.afterSwap(cfg.targetPath, cfg.stdout)
+	}
 	return nil
 }
 

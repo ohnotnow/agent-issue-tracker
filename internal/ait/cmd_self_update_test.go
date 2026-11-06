@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -182,6 +183,7 @@ func TestRunSelfUpdate_HappyPath(t *testing.T) {
 	fr := newFakeRelease(t, "v9.9.9", "ait-linux-amd64", newBinary, false)
 
 	var out bytes.Buffer
+	var checked string
 	err := runSelfUpdate(selfUpdateConfig{
 		apiURL:         fr.srv.URL + "/releases/latest",
 		httpClient:     fr.srv.Client(),
@@ -191,6 +193,7 @@ func TestRunSelfUpdate_HappyPath(t *testing.T) {
 		stdout:         &out,
 		currentVersion: "v0.1.0",
 		assumeYes:      true,
+		afterSwap:      func(path string, _ io.Writer) { checked = path },
 	})
 	if err != nil {
 		t.Fatalf("runSelfUpdate: %v\nstdout=%q", err, out.String())
@@ -202,6 +205,9 @@ func TestRunSelfUpdate_HappyPath(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Updated to v9.9.9") {
 		t.Errorf("expected confirmation, got %q", out.String())
+	}
+	if checked != target {
+		t.Errorf("the new binary's skills were not checked after the swap (afterSwap got %q)", checked)
 	}
 }
 

@@ -31,11 +31,13 @@ internal/ait/editor.go          $EDITOR round trip for `create`/`update --human`
 internal/ait/guards.go          Read check, empty-body and shrink refusals for blind writes
 internal/ait/gitignore.go       Adds `.ait/` to the project's .gitignore on `init`
 internal/ait/completion.go      Shell completion script generation (bash, zsh)
-internal/ait/version.go         `version` command and GitHub release check
-internal/ait/cmd_self_update.go `self-update`: download, checksum verification, binary swap
+internal/ait/version.go         `version` command, installed-skills status line, GitHub release check
+internal/ait/cmd_self_update.go `self-update`: download, checksum verification, binary swap, then skills check
+internal/ait/skills.go          `install-skills`: copy the embedded `claude/` files into ~/.claude
 internal/ait/exit_error.go      Non-error exit codes (e.g. `self-update --check`)
 internal/ait/*_test.go          Unit tests (editor parsing, completion syntax, pooled-connection pragmas, version, updater, gitignore)
-claude/                         Claude Code skill/agent docs for using `ait`
+claudefiles.go                  Package `aitfiles`: `go:embed claude` (at the repo root so the embed can reach `claude/`)
+claude/                         Claude Code skills, agents and command for using `ait`, embedded in the binary
 ```
 
 ## Architecture
@@ -98,7 +100,7 @@ Commands are registered in [internal/ait/command_registry.go](internal/ait/comma
 - Dependencies: `dep add`, `dep remove`, `dep list`, `dep tree`
 - Notes: `note add`, `note list`
 - Reporting/cleanup: `export`, `flush`, `log`, `log purge`
-- Tooling: `completion`, `version`, `self-update`, `help`
+- Tooling: `completion`, `version`, `self-update`, `install-skills`, `help`
 
 ### Output Modes
 
@@ -107,7 +109,7 @@ Commands are registered in [internal/ait/command_registry.go](internal/ait/comma
 - `list --human` prints grouped tabular output; `list --tree` prints an ASCII hierarchy. An issue whose parent is filtered out is drawn as a root under its full ID, so both show the same issues as the JSON.
 - `export` is the only command that emits Markdown instead of JSON
 - Every subcommand supports `--help`/`-h` for command-specific usage text
-- `completion`, `version`, `self-update` and `help` have `NeedsDB: false` and run without opening a database
+- `completion`, `version`, `self-update`, `install-skills` and `help` have `NeedsDB: false` and run without opening a database
 
 ## Business Logic And Conventions
 
@@ -194,7 +196,7 @@ There is no user authentication or role system. Coordination is lightweight and 
 
 - `version` checks GitHub Releases for the configured repo URL when the binary version is not `dev`
 - `self-update` downloads the matching release asset and verifies it against the release's `SHA256SUMS` before replacing the binary
-- `claude/` contains agent/skill docs that teach Claude Code how to work against this CLI
+- `claude/` contains the skills, agents and command that teach Claude Code how to work against this CLI. They are embedded in the binary; `install-skills` copies them into ~/.claude (adds missing files, leaves identical ones, asks before replacing changed ones, never prompts without a terminal on stdin, never deletes). After a swap, `self-update` runs the new binary's `install-skills --dry-run`
 
 ## Things To Read First
 

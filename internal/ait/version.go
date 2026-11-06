@@ -31,6 +31,7 @@ type ghRelease struct {
 
 func RunVersion() error {
 	fmt.Printf("ait version %s\n", Version)
+	fmt.Println(skillsStatus(skillFiles, defaultClaudeDir()))
 
 	if Version == "dev" {
 		return nil

@@ -216,6 +216,41 @@ was deleted or moved away.
 8. **Next**: `ait ready` again to find the next unblocked item
 9. **End of session**: `ait status` for an overall summary
 
+## Turning a Plan into Issues
+
+When a settled discussion or plan becomes a set of issues, the `spec-crafting`
+skill (if installed) covers how to write each one so a fresh agent can pick it
+up cold. This section is the ait side of that job.
+
+1. **Check for overlap first.** Run `ait list --all` and `ait search "<keyword>"`
+   for anything related. If you find overlap, ask the user before creating more.
+   If the user named a parent, `ait show` it; if its description is thin,
+   improve it before adding children.
+2. **Pick the top of the tree.** A feature with several epics gets an
+   `initiative` holding the vision document (background, problem, vision,
+   success criteria, principles, phases), with epics under it. A smaller
+   feature needs only an epic, which then holds the vision. The initiative or
+   epic carries the "why"; tasks carry the "what" and can be terse on context
+   because the parent covers it.
+3. **Add a tracker per phase.** One task per phase ("Phase 2: Service layer")
+   with no implementation detail. It blocks every issue in the next phase, so
+   `ait ready` only offers work whose phase has started:
+   `ait dep add <next-phase-issue> <phase-1-tracker>`.
+4. **Name prerequisites by ID** in each description ("Uses the Team model from
+   `proj-abc.2`"), as well as wiring them with `ait dep add`. A cold reader
+   follows the thread by ID.
+5. **Record rejected paths in `ant`**, not in issue descriptions, and reference
+   the ant entry from the epic, so a fresh agent doesn't reach for a ruled-out
+   approach.
+6. **Offer an amnesia check; don't just run it.** The `ait-amnesia-check` agent
+   reads a handful of issue IDs with no conversation context and shows what it
+   would build from each. It is slow and costs the user real money, so ask
+   first. Give it the foundation issues plus one or two deep in the dependency
+   chain. Never ask it for a verdict: diff its demonstration against what was
+   intended, and patch the issue wherever it guessed wrong or got stuck.
+
+The `plan-to-ait` agent does all of this from a plan file in `~/.claude/plans/`.
+
 ## Output Modes
 
 By default all commands return JSON — compact and token-efficient for agents.

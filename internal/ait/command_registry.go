@@ -665,6 +665,38 @@ Examples:
 			},
 		},
 		{
+			Name:    "install-skills",
+			Summary: "Install the Claude Code skills built into ait",
+			Help: `Usage: ait install-skills [--dry-run] [--force] [--dir <path>]
+
+Copy the Claude Code skills, agents and commands built into this ait into
+your Claude Code config directory (default ~/.claude).
+
+A missing file is added and an identical one left alone. A file that differs
+is replaced only if you say so at the [y/N/d] prompt (d shows the diff and
+asks again). With no terminal on stdin, as when an agent runs it, changed
+files are left as they are and listed, never prompted for.
+
+install-skills never deletes anything: a skill that ait no longer ships stays
+installed until you remove it.
+
+Flags:
+  --dry-run      Only say what would change
+  --force        Replace changed files without asking
+  --dir <path>   Claude Code config directory (default ~/.claude)
+
+Examples:
+  ait install-skills
+  ait install-skills --dry-run
+  ait install-skills --dir ~/work/.claude
+`,
+			Flags:   []string{"--dry-run", "--force", "--dir"},
+			NeedsDB: false,
+			Run: func(_ *App, _ context.Context, args []string) error {
+				return RunInstallSkills(args)
+			},
+		},
+		{
 			Name:    "help",
 			Summary: "Show this help",
 			NeedsDB: false,

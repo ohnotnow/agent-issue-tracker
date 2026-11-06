@@ -100,6 +100,7 @@ It's not designed to handle cross-team shared issues, work, projects.  The inter
 - `note list`
 - `version`
 - `self-update` (`--check`, `--yes`)
+- `install-skills` (`--dry-run`, `--force`, `--dir`)
 - `export` (`--output`)
 - `completion` (`bash`, `zsh`)
 
@@ -385,14 +386,31 @@ This keeps issue state close to the codebase it belongs to and makes it easy to 
 
 ## Claude Code Skills and Agents
 
-The `claude/` directory contains pre-written skills and agents that teach an agent how to use `ait` effectively:
+`ait` carries the Claude Code skills, agents and command that go with it, built into the binary, so a binary and its skills always come from the same release:
 
-- **`claude/skills/ait/SKILL.md`** — core command reference, workflow patterns, and best practices
-- **`claude/skills/ait/DELEGATION.md`** — guide for delegating work to sub-agents via Markdown export
-- **`claude/agents/plan-to-ait.md`** — agent that converts plan-mode plans into structured ait epics and issues
-- **`claude/commands/hello-ait.md`** — example session-start command that reads the README and checks for outstanding work. This is a boilerplate starting point — edit it to suit your own conversational style.
+- **`skills/ait`**: core command reference, workflow patterns, and how to turn a plan into issues (`SKILL.md`), plus a guide to delegating work to sub-agents via Markdown export (`DELEGATION.md`)
+- **`skills/ait-recap`**: a friendly recap of recent ait activity, for one project or a folder of them
+- **`agents/plan-to-ait`**: converts plan-mode plans into structured ait initiatives, epics and issues
+- **`agents/ait-audit`**: reports open issues that look finished but were never closed
+- **`agents/ait-amnesia-check`**: reads new issues with no conversation context and shows what it would build from each, so you can see what a spec failed to say
+- **`commands/hello-ait`**: example session-start command that reads the README and checks for outstanding work. It's a starting point; edit it to suit your own style.
 
-To install, copy the skill and agent directories into your agents configuration directory (eg, `~/.claude/skills/`, `~/.claude/agents/`
+The sources live in this repo's `claude/` directory. To install or update them:
+
+```bash
+ait install-skills            # copy them into ~/.claude
+ait install-skills --dry-run  # only say what would change
+ait install-skills --force    # replace changed files without asking
+ait install-skills --dir ~/work/.claude
+```
+
+A missing file is added and an identical one left alone. If you've edited your installed copy, `install-skills` asks before replacing it (`[y/N/d]`, where `d` shows the diff). Run without a terminal, as an agent would, it never asks: changed files are left as they are and listed.
+
+To keep them current: `ait version` says whether the installed copies match this binary's, and `ait self-update` runs the new binary's `install-skills --dry-run` straight after an update, so you see at once whether the skills changed too.
+
+`install-skills` never deletes anything. A skill that ait no longer ships stays installed until you remove it yourself; for example, `ait-crafting` was retired in favour of the ait skill's "Turning a Plan into Issues" section plus the general `spec-crafting` skill, so delete `~/.claude/skills/ait-crafting/` if you have it.
+
+`plan-to-ait` works best alongside `spec-crafting`, which ait doesn't ship. That skill, and other related skills and agents that don't need ait, are in the [agentic-stuff](https://github.com/ohnotnow/agentic-stuff) repo.
 
 You might also want to allow the agent to run `ait` and use the `ait` skill without needing permission.  For claude code for example, in `~/.claude/settings.json` :
 
@@ -420,7 +438,9 @@ ait self-update --check  # report whether an update is available; exit only
 Exit codes for `--check` mirror the `composer outdated` style — `0` if you are
 already on the latest, `1` if a newer release is available, `2` if the lookup
 failed (e.g. offline). The command verifies the downloaded binary against the
-release's `SHA256SUMS` before swapping it into place atomically.
+release's `SHA256SUMS` before swapping it into place atomically. It then
+checks whether the new release's skills differ from your installed ones (see
+[Claude Code Skills and Agents](#claude-code-skills-and-agents)).
 
 If `ait` was installed via Homebrew or `go install`, self-update declines and
 points you at the right tool. Dev builds (`Version == "dev"`) are also a no-op

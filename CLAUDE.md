@@ -27,10 +27,12 @@ internal/ait/
   completion.go             Bash/zsh completion script generation
   guards.go                 Read check, empty-body and shrink refusals for blind writes
   gitignore.go              Adds .ait/ to .gitignore on init
-  version.go                Version command and GitHub release check
-  cmd_self_update.go        self-update: download, checksum check, binary swap
+  version.go                Version command (and installed-skills status), GitHub release check
+  cmd_self_update.go        self-update: download, checksum check, binary swap, then skills check
+  skills.go                 install-skills: copies the embedded claude/ files into ~/.claude
   *_test.go                 Unit tests (editor, completion, pragmas, version, updater, gitignore)
-claude/                     Skills and agent docs for Claude Code integration
+claudefiles.go              Package aitfiles: go:embed of claude/ (must sit at the repo root to reach it)
+claude/                     Skills, agents and command for Claude Code, embedded in the binary
 ```
 
 ## Architecture
@@ -78,7 +80,9 @@ Seven numbered migrations (baseline, claim fields, initiative type, flush histor
 
 Feature-complete. Tight scope. No planned feature additions.
 
-Cross-repo orchestration (one feature spanning a frontend and a backend repo, etc.) is handled by the `ait-fleet` Claude skill via the existing `--db` flag and a textual linking convention in notes. Do **not** add cross-DB dependency tracking, fleet manifests, or multi-DB queries to the binary itself — that's deliberately out of scope and the skill exists precisely so the binary can stay tightly scoped.
+Cross-repo orchestration (one feature spanning a frontend and a backend repo, etc.) is deliberately out of scope for the binary. Do **not** add cross-DB dependency tracking, fleet manifests, or multi-DB queries. Each repo has its own database; the existing `--db` flag is enough to read another one. (There used to be an `ait-fleet` skill for this; it was dropped in November 2026.)
+
+`claude/` is the single source for every skill, agent and command that needs ait. They are embedded and installed with `ait install-skills`. General skills that don't need ait (for example `spec-crafting`) live in the agentic-stuff repo instead. Don't keep copies of the same file in both places.
 
 ## Tweaks
 

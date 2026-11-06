@@ -94,13 +94,19 @@ func generateHelpText() string {
 	var b strings.Builder
 	b.WriteString("Usage: ait [--db <path>] <command> [options]\n\nCommands:\n")
 
+	// Size the name column to the longest name, so a long one such as
+	// install-skills doesn't push its row out of line.
+	nameWidth := 0
+	for _, cmd := range commands {
+		nameWidth = max(nameWidth, len(cmd.Name))
+	}
 	for _, cmd := range commands {
 		usage := usageSummary(cmd)
 		summary := cmd.Summary
 		if len(cmd.Aliases) > 0 {
 			summary += " (alias: " + strings.Join(cmd.Aliases, ", ") + ")"
 		}
-		fmt.Fprintf(&b, "  %-11s %-35s %s\n", cmd.Name, usage, summary)
+		fmt.Fprintf(&b, "  %-*s %-35s %s\n", nameWidth, cmd.Name, usage, summary)
 	}
 
 	b.WriteString(`

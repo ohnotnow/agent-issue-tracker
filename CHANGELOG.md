@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `ait install-skills` installs the Claude Code skills, agents and command that go with this ait, which are now built into the binary, so a binary and its skills always come from the same release. Until now they were copied by hand from the repo's `claude/` folder, and `self-update` gave no hint that the skills had changed too. A missing file is added and an identical one left alone; if you've edited your installed copy, it asks before replacing it (`[y/N/d]`, where `d` shows the diff). Run without a terminal on stdin, as an agent runs it, it never asks: changed files are left as they are and listed. `--dry-run` only reports, `--force` replaces without asking, and `--dir` picks a Claude Code config directory other than `~/.claude`. It never deletes anything.
+- `ait version` says whether the installed skills match the ones in this binary, and `ait self-update` checks the new release's skills against yours straight after it swaps the binary in.
+- The `ait-audit` and `ait-amnesia-check` agents now ship with ait. The ait skill gains a "Turning a Plan into Issues" section: the overlap check, initiatives and epics, phase trackers, naming prerequisites, and when to offer an amnesia check.
+
+### Changed
+- The `plan-to-ait` agent is the newer, shorter version that leaves the craft of writing issues to the `spec-crafting` skill (in the agentic-stuff repo) and the ait mechanics to the ait skill.
+- `ait help` sizes its command column to the longest command name, so `self-update` and `install-skills` line up with the rest.
+
+### Removed
+- The `ait-fleet` skill. If you have it installed, delete `~/.claude/skills/ait-fleet/`. The `ait-crafting` skill, which lived in the agentic-stuff repo, is retired too, so delete `~/.claude/skills/ait-crafting/` once you have `spec-crafting`.
+
 ## [1.18.0] - 2026-10-29
 
 The first release to come out of a full code review rather than a feature request. There are no new commands, but there is a run of fixes to IDs, claims, migrations and argument handling, which matter most when several agents share one tracker.
