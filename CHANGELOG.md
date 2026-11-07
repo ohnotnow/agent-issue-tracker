@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.19.2] - 2026-11-07
+
+### Changed
+- `ait self-update` no longer lists every installed skill, agent and command after an update. It used to run the new binary's `install-skills --dry-run` and print the whole comparison, even when nothing had changed, and then always told you to run `install-skills`. It now prints one line pointing you at `ait install-skills --dry-run`. Your first update from 1.19.1 or earlier still shows the old listing, because that update runs the old binary's code.
+
 ## [1.19.1] - 2026-11-07
 
 ### Fixed
@@ -258,7 +263,8 @@ First stable release. Core feature set:
 - Forward-only schema migration system
 - Custom database path via `--db`
 
-[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.19.1...HEAD
+[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.19.2...HEAD
+[1.19.2]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.19.1...v1.19.2
 [1.19.1]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.19.0...v1.19.1
 [1.19.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.18.0...v1.19.0
 [1.18.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.17.0...v1.18.0

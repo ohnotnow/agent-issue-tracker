@@ -250,17 +250,3 @@ func writeSkillFile(f skillFile) error {
 	}
 	return os.WriteFile(f.dest, f.content, 0o644)
 }
-
-// checkNewSkills runs after self-update swaps the binary in. It asks the new
-// binary, which carries the new skills, how they compare with the installed
-// ones, so the user learns at once whether the skills changed too.
-func checkNewSkills(target string, out io.Writer) {
-	fmt.Fprintln(out, "\nThe skills, agents and commands may have changed too:")
-	cmd := exec.Command(target, "install-skills", "--dry-run")
-	cmd.Stdout, cmd.Stderr = out, out
-	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(out, "(couldn't run the new ait to check: %v)\n", err)
-		return
-	}
-	fmt.Fprintln(out, "Run ait install-skills to bring them up to date.")
-}

@@ -28,7 +28,7 @@ internal/ait/
   guards.go                 Read check, empty-body and shrink refusals for blind writes
   gitignore.go              Adds .ait/ to .gitignore on init
   version.go                Version command (and installed-skills status), GitHub release check
-  cmd_self_update.go        self-update: download, checksum check, binary swap, then skills check
+  cmd_self_update.go        self-update: download, checksum check, binary swap, skills reminder
   skills.go                 install-skills: copies the embedded claude/ files into ~/.claude
   *_test.go                 Unit tests (editor, completion, pragmas, version, updater, gitignore)
 claudefiles.go              Package aitfiles: go:embed of claude/ (must sit at the repo root to reach it)

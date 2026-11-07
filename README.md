@@ -406,7 +406,7 @@ ait install-skills --dir ~/work/.claude
 
 A missing file is added and an identical one left alone. If you've edited your installed copy, `install-skills` asks before replacing it (`[y/N/d]`, where `d` shows the diff). Run without a terminal, as an agent would, it never asks: changed files are left as they are and listed.
 
-To keep them current: `ait version` says whether the installed copies match this binary's, and `ait self-update` runs the new binary's `install-skills --dry-run` straight after an update, so you see at once whether the skills changed too.
+To keep them current: `ait version` says whether the installed copies match this binary's, and after an update `ait self-update` reminds you to run `ait install-skills --dry-run` to see whether the skills changed too.
 
 `install-skills` never deletes anything. A skill that ait no longer ships stays installed until you remove it yourself; for example, `ait-crafting` was retired in favour of the ait skill's "Turning a Plan into Issues" section plus the general `spec-crafting` skill, so delete `~/.claude/skills/ait-crafting/` if you have it.
 
