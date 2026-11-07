@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.20.1] - 2026-11-07
+
+### Changed
+- The main skill is now called `ait` rather than `ait-usage`, so its name matches its folder (`claude/skills/ait/`). Run `ait install-skills` to pick up the new name.
+
 ## [1.20.0] - 2026-11-07
 
 ### Added
@@ -271,7 +276,8 @@ First stable release. Core feature set:
 - Forward-only schema migration system
 - Custom database path via `--db`
 
-[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.20.0...HEAD
+[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.20.1...HEAD
+[1.20.1]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.20.0...v1.20.1
 [1.20.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.19.2...v1.20.0
 [1.19.2]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.19.1...v1.19.2
 [1.19.1]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.19.0...v1.19.1

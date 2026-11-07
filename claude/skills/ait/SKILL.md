@@ -1,5 +1,5 @@
 ---
-name: ait-usage
+name: ait
 description: >
   Local-first issue tracker for coding agents. Use when planning work, tracking
   multi-step tasks, modelling dependencies, coordinating between agents, or
