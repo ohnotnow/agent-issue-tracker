@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.19.1] - 2026-11-07
+
+### Fixed
+- `ait init --help` (and `-h`) printed its usage but also created `.ait/` in the current folder, and a `.gitignore` entry in a git repository. Help is now answered before the database is touched, so asking for it never changes anything on disk. This also means `ait list --help`, `ait dep add --help` and the other commands that use the database show their usage before `init` has been run, instead of the "not initialised" error. Thanks to nickgarvey for reporting it (#4).
+
 ## [1.19.0] - 2026-11-07
 
 ### Added
@@ -253,7 +258,8 @@ First stable release. Core feature set:
 - Forward-only schema migration system
 - Custom database path via `--db`
 
-[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.19.0...HEAD
+[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.19.1...HEAD
+[1.19.1]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.19.0...v1.19.1
 [1.19.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.18.0...v1.19.0
 [1.18.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.17.0...v1.18.0
 [1.17.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.16.1...v1.17.0

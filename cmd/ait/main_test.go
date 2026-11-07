@@ -4292,3 +4292,59 @@ func TestMovedIDsSurviveReopen(t *testing.T) {
 		t.Fatalf("expected %s (Task, child %s.1) after reopen, got %+v / %+v", moved.ID, moved.ID, shown.Issue, shown.Children)
 	}
 }
+
+// TestHelpFlagsDoNotTouchDatabase: `ait init --help` used to print usage and
+// also create .ait/ in the working directory (GitHub issue #4). Help must not
+// change anything on disk, and must work before init has ever been run.
+func TestHelpFlagsDoNotTouchDatabase(t *testing.T) {
+	cases := [][]string{
+		{"init", "--help"},
+		{"init", "-h"},
+		{"list", "--help"},
+		{"dep", "add", "--help"},
+		{"note", "list", "-h"},
+	}
+
+	for _, args := range cases {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			dir := t.TempDir()
+			t.Chdir(dir)
+
+			output := captureStdout(t, func() {
+				if err := dispatch(context.Background(), args); err != nil {
+					t.Fatalf("dispatch(%v) failed: %v", args, err)
+				}
+			})
+
+			wantPrefix := "Usage: ait " + strings.Join(args[:len(args)-1], " ")
+			if !strings.HasPrefix(output, wantPrefix) {
+				t.Fatalf("dispatch(%v) printed %q, want it to start %q", args, output, wantPrefix)
+			}
+
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatalf("read temp dir: %v", err)
+			}
+			if len(entries) != 0 {
+				t.Fatalf("dispatch(%v) created %d entries in the working directory, want none", args, len(entries))
+			}
+		})
+	}
+}
+
+// TestDispatchInitStillCreatesDatabase guards the other side of the help
+// short-circuit: a plain init still creates the database.
+func TestDispatchInitStillCreatesDatabase(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	captureStdout(t, func() {
+		if err := dispatch(context.Background(), []string{"init", "--prefix", "demo"}); err != nil {
+			t.Fatalf("dispatch(init) failed: %v", err)
+		}
+	})
+
+	if _, err := os.Stat(filepath.Join(dir, ".ait", "ait.db")); err != nil {
+		t.Fatalf("expected .ait/ait.db after init: %v", err)
+	}
+}

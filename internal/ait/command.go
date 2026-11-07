@@ -135,3 +135,26 @@ func PrintCommandHelp(cmd string) {
 	}
 	PrintHelp()
 }
+
+func isHelpFlag(arg string) bool {
+	return arg == "--help" || arg == "-h"
+}
+
+// HelpRequest reports whether args (everything after the command name) is a
+// plain request for help, and returns the help topic to print: the command
+// itself (`ait init --help`) or one of its subcommands (`ait dep add -h`).
+func HelpRequest(cmd *Command, args []string) (string, bool) {
+	if len(args) == 0 {
+		return "", false
+	}
+	if isHelpFlag(args[0]) {
+		return cmd.Name, true
+	}
+	if len(args) > 1 && isHelpFlag(args[1]) {
+		topic := cmd.Name + " " + args[0]
+		if _, ok := subcommandHelp[topic]; ok {
+			return topic, true
+		}
+	}
+	return "", false
+}
