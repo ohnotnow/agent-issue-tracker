@@ -35,6 +35,8 @@ Once installed, `ait self-update` keeps it current (see [Self-update](#self-upda
 
 If you do have Go, `go install github.com/ohnotnow/agent-issue-tracker/cmd/ait@latest` also works.
 
+`ait` comes with a set of skills and sub-agents.  You can install them (by default into `~/.claude/`) by running `ait install-skills`.  See [Skills and agents](#claude-code-skills-and-agents) for more details.
+
 ## Current Goals
 
 The tool is optimized for agent workflow first:
