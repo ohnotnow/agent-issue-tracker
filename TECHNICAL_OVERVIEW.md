@@ -196,7 +196,7 @@ There is no user authentication or role system. Coordination is lightweight and 
 
 - `version` checks GitHub Releases for the configured repo URL when the binary version is not `dev`
 - `self-update` downloads the matching release asset and verifies it against the release's `SHA256SUMS` before replacing the binary
-- `claude/` contains the skills, agents and command that teach Claude Code how to work against this CLI. They are embedded in the binary; `install-skills` copies them into ~/.claude (adds missing files, leaves identical ones, asks before replacing changed ones, never prompts without a terminal on stdin, never deletes). After a swap, `self-update` runs the new binary's `install-skills --dry-run`
+- `claude/` contains the skills, agents and command that teach Claude Code how to work against this CLI. They are embedded in the binary; `install-skills` copies them into ~/.claude (adds missing files, leaves identical ones, asks before replacing changed ones, never prompts without a terminal on stdin, never deletes). After a swap, `self-update` prints a one-line reminder to run `ait install-skills --dry-run`
 
 ## Things To Read First
 

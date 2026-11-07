@@ -57,6 +57,8 @@ func TestInstallingSkills(t *testing.T) {
 			"agents/ait-audit.md",
 			"agents/plan-to-ait.md",
 			"commands/hello-ait.md",
+			"skills/ait-expand-issue/SKILL.md",
+			"skills/ait-feature-workflow/SKILL.md",
 			"skills/ait-recap/SKILL.md",
 			"skills/ait/DELEGATION.md",
 			"skills/ait/SKILL.md",

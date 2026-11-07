@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+To ship as 1.20.0.
+
+### Added
+- The `ait-expand-issue` and `ait-feature-workflow` skills now ship with ait (`ait install-skills`). They used to live in the agentic-stuff repo as `expand-issue` and `feature-workflow`. `ait-expand-issue` turns a terse "note to self" issue into a plan document ready for `plan-to-ait`; `ait-feature-workflow` runs a feature from `ait ready` through plan mode and `plan-to-ait` to implementing against each issue's acceptance criteria. If you have the old names installed, remove `~/.claude/skills/expand-issue/` and `~/.claude/skills/feature-workflow/` (agentic-stuff's `./migrate` does it for you); both new skills mention it if they spot the old copy.
+
+### Fixed
+- The feature workflow told agents to close issues with `ait close <id> --message`, which isn't a flag; it now says `--note`.
+
 ## [1.19.2] - 2026-11-07
 
 ### Changed

@@ -390,6 +390,8 @@ This keeps issue state close to the codebase it belongs to and makes it easy to 
 
 - **`skills/ait`**: core command reference, workflow patterns, and how to turn a plan into issues (`SKILL.md`), plus a guide to delegating work to sub-agents via Markdown export (`DELEGATION.md`)
 - **`skills/ait-recap`**: a friendly recap of recent ait activity, for one project or a folder of them
+- **`skills/ait-expand-issue`**: turns a terse "note to self" issue into a plan document ready for `plan-to-ait`, listing the assumptions it made
+- **`skills/ait-feature-workflow`**: a session workflow for feature work: orient with `ait ready`, plan in plan mode, create issues with `plan-to-ait`, then implement against each issue's acceptance criteria
 - **`agents/plan-to-ait`**: converts plan-mode plans into structured ait initiatives, epics and issues
 - **`agents/ait-audit`**: reports open issues that look finished but were never closed
 - **`agents/ait-amnesia-check`**: reads new issues with no conversation context and shows what it would build from each, so you can see what a spec failed to say
@@ -408,7 +410,7 @@ A missing file is added and an identical one left alone. If you've edited your i
 
 To keep them current: `ait version` says whether the installed copies match this binary's, and after an update `ait self-update` reminds you to run `ait install-skills --dry-run` to see whether the skills changed too.
 
-`install-skills` never deletes anything. A skill that ait no longer ships stays installed until you remove it yourself; for example, `ait-crafting` was retired in favour of the ait skill's "Turning a Plan into Issues" section plus the general `spec-crafting` skill, so delete `~/.claude/skills/ait-crafting/` if you have it.
+`install-skills` never deletes anything. A skill that ait no longer ships stays installed until you remove it yourself; for example, `ait-crafting` was retired in favour of the ait skill's "Turning a Plan into Issues" section plus the general `spec-crafting` skill, so delete `~/.claude/skills/ait-crafting/` if you have it. Likewise `expand-issue` and `feature-workflow`, which used to come from the agentic-stuff repo, are now `ait-expand-issue` and `ait-feature-workflow` here; remove the old copies from `~/.claude/skills/`.
 
 `plan-to-ait` works best alongside `spec-crafting`, which ait doesn't ship. That skill, and other related skills and agents that don't need ait, are in the [agentic-stuff](https://github.com/ohnotnow/agentic-stuff) repo.
 
