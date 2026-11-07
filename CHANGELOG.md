@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-To ship as 1.20.0.
+## [1.20.0] - 2026-11-07
 
 ### Added
 - The `ait-expand-issue` and `ait-feature-workflow` skills now ship with ait (`ait install-skills`). They used to live in the agentic-stuff repo as `expand-issue` and `feature-workflow`. `ait-expand-issue` turns a terse "note to self" issue into a plan document ready for `plan-to-ait`; `ait-feature-workflow` runs a feature from `ait ready` through plan mode and `plan-to-ait` to implementing against each issue's acceptance criteria. If you have the old names installed, remove `~/.claude/skills/expand-issue/` and `~/.claude/skills/feature-workflow/` (agentic-stuff's `./migrate` does it for you); both new skills mention it if they spot the old copy.
@@ -271,7 +271,8 @@ First stable release. Core feature set:
 - Forward-only schema migration system
 - Custom database path via `--db`
 
-[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.19.2...HEAD
+[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.20.0...HEAD
+[1.20.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.19.2...v1.20.0
 [1.19.2]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.19.1...v1.19.2
 [1.19.1]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.19.0...v1.19.1
 [1.19.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.18.0...v1.19.0
