@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-11-07
+
 ### Added
-- `ait install-skills` installs the Claude Code skills, agents and command that go with this ait, which are now built into the binary, so a binary and its skills always come from the same release. Until now they were copied by hand from the repo's `claude/` folder, and `self-update` gave no hint that the skills had changed too. A missing file is added and an identical one left alone; if you've edited your installed copy, it asks before replacing it (`[y/N/d]`, where `d` shows the diff). Run without a terminal on stdin, as an agent runs it, it never asks: changed files are left as they are and listed. `--dry-run` only reports, `--force` replaces without asking, and `--dir` picks a Claude Code config directory other than `~/.claude`. It never deletes anything.
+- `ait install-skills` installs the Claude Code skills, agents and command that go with this ait, which are now built into the binary, so a binary and its skills always come from the same release. Until now they were copied by hand from the repo's `claude/` folder, and `self-update` gave no hint that the skills had changed too. A missing file is added and an identical one left alone; if you've edited your installed copy, it asks before replacing it (`[y/N/d]`, where `d` shows the diff). Run without a terminal on stdin, as an agent runs it, it never asks: changed files are left as they are and listed. `--dry-run` only reports, `--force` replaces without asking, and `--dir` installs into a config directory other than `~/.claude`. It never deletes anything.
 - `ait version` says whether the installed skills match the ones in this binary, and `ait self-update` checks the new release's skills against yours straight after it swaps the binary in.
+- The README explains how to use the skills and agents with OpenCode and Codex: `install-skills --dir ~/.config/opencode` or `--dir ~/.codex`, and how to convert the Markdown agents into Codex's TOML format by hand.
 - The `ait-audit` and `ait-amnesia-check` agents now ship with ait. The ait skill gains a "Turning a Plan into Issues" section: the overlap check, initiatives and epics, phase trackers, naming prerequisites, and when to offer an amnesia check.
 
 ### Changed
@@ -250,7 +253,8 @@ First stable release. Core feature set:
 - Forward-only schema migration system
 - Custom database path via `--db`
 
-[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.18.0...HEAD
+[Unreleased]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.19.0...HEAD
+[1.19.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.18.0...v1.19.0
 [1.18.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.17.0...v1.18.0
 [1.17.0]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.16.1...v1.17.0
 [1.16.1]: https://github.com/ohnotnow/agent-issue-tracker/compare/v1.16.0...v1.16.1

@@ -412,6 +412,46 @@ To keep them current: `ait version` says whether the installed copies match this
 
 `plan-to-ait` works best alongside `spec-crafting`, which ait doesn't ship. That skill, and other related skills and agents that don't need ait, are in the [agentic-stuff](https://github.com/ohnotnow/agentic-stuff) repo.
 
+### OpenCode and Codex
+
+The skills use the shared `SKILL.md` format, so they work in other agents too. `--dir` is the root the whole `claude/` tree is copied under (`skills/`, `agents/`, `commands/`), so point it at the other tool's config folder.
+
+**OpenCode** already reads skills from `~/.claude/skills`, but looks for agents in its own folder:
+
+```bash
+ait install-skills --dir ~/.config/opencode
+```
+
+That puts the agents in `~/.config/opencode/agents/`. It also puts a second copy of the skills in `~/.config/opencode/skills/`, which OpenCode handles fine. The agents' frontmatter is written for Claude Code (`model: opus`, `tools: Bash, Read, ...`, `skills: [ait]`), so you may want to adjust it to OpenCode's own conventions.
+
+**Codex** reads skills from `~/.codex/skills`:
+
+```bash
+ait install-skills --dir ~/.codex
+```
+
+The skills work as they are. Codex agents are TOML files (`~/.codex/agents/<name>.toml`), not Markdown, so the agents land in `~/.codex/agents/` as `.md` files that Codex won't pick up until you convert them by hand:
+
+- `name` and `description` come straight from the frontmatter
+- the Markdown body (everything after the closing `---`) becomes `developer_instructions`, in a `"""` string
+- drop `model`, `tools` and `skills`; Codex has no way to preload a skill, so add a line at the top of the instructions telling the agent to use the `ait` skill
+- `plan-to-ait` has a section about Claude Code's permission prompts ("one Bash call per response"), which you can delete
+
+For example, `ait-audit` becomes:
+
+```toml
+name = "ait-audit"
+description = "Audits open ait issues against the codebase. Reports which issues appear complete but aren't closed. Does NOT close issues - reports findings for human review."
+developer_instructions = """
+Use the ait skill for the ait command reference.
+
+# Ait Audit Agent
+...
+"""
+```
+
+Two things to know with either tool. `ait version` only checks `~/.claude`, so it will report the skills as not installed if you only installed them somewhere else. And `commands/hello-ait.md` is a Claude Code slash command; it gets copied, but the other tools may not do anything with it.
+
 You might also want to allow the agent to run `ait` and use the `ait` skill without needing permission.  For claude code for example, in `~/.claude/settings.json` :
 
 ```json
